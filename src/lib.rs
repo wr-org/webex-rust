@@ -1,7 +1,10 @@
 pub mod adaptive_card;
 pub mod types;
 use futures::{SinkExt, StreamExt};
+use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
+use hyper_tls::HttpsConnector;
 use log::{debug, warn};
+use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::net::TcpStream;
 use tokio_tls::TlsStream;
@@ -14,15 +17,13 @@ use uuid::Uuid;
  * URLs:
  *
  * https://help.webex.com/en-us/xbcr37/External-Connections-Made-by-the-Serviceability-Connector
+ *
+ * These apply to the central Webex Teams (Wxt) servers.  WxT also supports enterprise servers;
+ * these are not supported.
  */
 
 const REST_HOST_PREFIX: &str = "https://api.ciscospark.com/v1";
 const REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
-
-#[allow(unused_imports)]
-use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
-use hyper_tls::HttpsConnector;
-use serde::{de::DeserializeOwned, Serialize};
 
 pub type WStream = WebSocketStream<Stream<TcpStream, TlsStream<TcpStream>>>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
