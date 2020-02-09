@@ -1,8 +1,14 @@
 [package]
 name = "webex"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Scott Hutton <shutton@pobox.com>"]
 edition = "2018"
+description = "Interface to Webex Teams REST and WebSocket APIs"
+keywords = ["webex"]
+categories = ["asynchronous"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/shutton/webex-rust.git"
 
 [dependencies]
 async-std = "1.4.0"
