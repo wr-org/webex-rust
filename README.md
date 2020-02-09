@@ -10,7 +10,7 @@ Current functionality includes:
 - Registration with Webex APIs
 - Monitoring an event stream
 - Sending direct or group messages
-- Getting room memeberships
+- Getting room memberships
 - Building AdaptiveCards and retrieving responses
 
 Not all features are fully-fleshed out, particularly the AdaptiveCard
