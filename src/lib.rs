@@ -64,7 +64,7 @@ impl WebexEventStream {
                                         continue;
                                     }
                                 }
-                                Err(e) => return Err(e.to_string()),
+                                Err(e) => return Err(e),
                             };
                         }
                         Err(e) => return Err(e.to_string()),
@@ -246,7 +246,7 @@ impl Webex {
             .method(http_method)
             .uri(url)
             .header("Authorization", &self.bearer);
-        if !body.is_none() {
+        if body.is_some() {
             builder = builder.header("Content-Type", "application/json");
         }
         let body = match body {
@@ -340,7 +340,7 @@ impl Webex {
                 },
                 Err(e) => Err(format!("Recieved error from websocket: {}", e)),
             },
-            None => Err(format!("Websocket closed")),
+            None => Err("Websocket closed".to_string()),
         }
     }
 }
