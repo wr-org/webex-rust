@@ -281,3 +281,29 @@ pub struct AttachmentAction {
     pub room_id: String,
     pub created: String,
 }
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Person {
+    pub id: String,
+    pub emails: Vec<String>,
+    pub phone_numbers: Vec<PhoneNumber>,
+    pub display_name: String,
+    pub nick_name: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub org_id: String,
+    pub created: String,
+    pub last_activity: String,
+    pub status: String,
+    #[serde(rename = "type")]
+    pub person_type: String,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PhoneNumber {
+    #[serde(rename = "type")]
+    pub number_type: String,
+    pub value: String,
+}

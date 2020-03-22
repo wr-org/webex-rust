@@ -183,6 +183,16 @@ impl Webex {
         }
     }
 
+    /// Get information about person
+    pub async fn get_person(&self, id: &str) -> Result<types::Person, String> {
+        let rest_method = format!("people/{}", id);
+        let people_reply: Result<types::Person, _> = self.api_get(rest_method.as_str()).await;
+        match people_reply {
+            Err(e) => Err(format!("people failed: {}", e)),
+            Ok(pr) => Ok(pr),
+        }
+    }
+
     /// Send a message to a user or room
     pub async fn send_message(
         &self,
