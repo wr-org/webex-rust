@@ -44,7 +44,7 @@ impl Error {
 
     pub fn timeout(&self) -> Option<i64> {
         match self.inner.kind {
-            Kind::Status(code) => self.inner.timeout,
+            Kind::Status(_) => self.inner.timeout,
             _ => None,
         }
     }
