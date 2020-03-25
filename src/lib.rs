@@ -1,5 +1,7 @@
 pub mod adaptive_card;
 pub mod types;
+pub mod error;
+
 use futures::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
@@ -12,6 +14,7 @@ use tokio_tungstenite::stream::Stream;
 use tokio_tungstenite::{connect_async, WebSocketStream};
 use tungstenite::protocol::Message;
 use uuid::Uuid;
+use crate::error::{Error, status_code, text_error, text_error_with_inner, limited};
 
 /*
  * URLs:
@@ -132,7 +135,7 @@ impl Webex {
     }
 
     /// Get an event stream handle
-    pub async fn event_stream(&self) -> Result<WebexEventStream, String> {
+    pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
         /*
          * Determine the correct endpoint
          */
@@ -142,12 +145,12 @@ impl Webex {
          * Connect to the event stream
          */
         let url = url::Url::parse(ws_url.as_str())
-            .map_err(|e| format!("Unable to parse WS URL: {}", e))?;
+            .map_err(|e| text_error_with_inner(format!("Unable to parse WS URL: {}", e), e))?;
         debug!("Connecting to {:?}", url);
 
         let (mut ws_stream, _response) = connect_async(url.clone())
             .await
-            .map_err(|e| format!("connecting to {}: {}", url, e))?;
+            .map_err(|e| text_error_with_inner(format!("connecting to {}: {}", url, e), e))?;
         debug!("Connected to {}", url);
         self.ws_auth(&mut ws_stream).await?;
 
@@ -163,32 +166,32 @@ impl Webex {
     ///
     /// Retrieves the attachment for the given ID.  This can be used to
     /// retrieve data from an AdaptiveCard submission
-    pub async fn get_attachment_action(&self, id: &str) -> Result<types::AttachmentAction, String> {
+    pub async fn get_attachment_action(&self, id: &str) -> Result<types::AttachmentAction, Error> {
         let rest_method = format!("attachment/actions/{}", id);
         self.api_get(rest_method.as_str()).await
     }
 
     /// Get a message by ID
-    pub async fn get_message(&self, id: &str) -> Result<types::Message, String> {
+    pub async fn get_message(&self, id: &str) -> Result<types::Message, Error> {
         let rest_method = format!("messages/{}", id);
         self.api_get(rest_method.as_str()).await
     }
 
     /// Get available rooms
-    pub async fn get_rooms(&self) -> Result<Vec<types::Room>, String> {
+    pub async fn get_rooms(&self) -> Result<Vec<types::Room>, Error> {
         let rooms_reply: Result<types::RoomsReply, _> = self.api_get("rooms").await;
         match rooms_reply {
-            Err(e) => Err(format!("rooms failed: {}", e)),
+            Err(e) => Err(e.with_prefix("rooms failed: ")),
             Ok(rr) => Ok(rr.items),
         }
     }
 
     /// Get information about person
-    pub async fn get_person(&self, id: &str) -> Result<types::Person, String> {
+    pub async fn get_person(&self, id: &str) -> Result<types::Person, Error> {
         let rest_method = format!("people/{}", id);
         let people_reply: Result<types::Person, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
-            Err(e) => Err(format!("people failed: {}", e)),
+            Err(e) => Err(e.with_prefix("people failed: ")),
             Ok(pr) => Ok(pr),
         }
     }
@@ -197,7 +200,7 @@ impl Webex {
     pub async fn send_message(
         &self,
         message: &types::MessageOut,
-    ) -> Result<types::Message, String> {
+    ) -> Result<types::Message, Error> {
         self.api_post("messages", &message).await
     }
 
@@ -206,8 +209,7 @@ impl Webex {
      * high-level calls like "get_message"
      ******************************************************************/
 
-    async fn api_get<T: DeserializeOwned>(&self, rest_method: &str) -> Result<T, String> {
-        // Why do we have to say Option<String> here? Why can't we just pass in None?
+    async fn api_get<T: DeserializeOwned>(&self, rest_method: &str) -> Result<T, Error> {
         let body: Option<String> = None;
         self.rest_api("GET", rest_method, body).await
     }
@@ -216,7 +218,7 @@ impl Webex {
         &self,
         rest_method: &str,
         body: U,
-    ) -> Result<T, String> {
+    ) -> Result<T, Error> {
         self.rest_api("POST", rest_method, Some(body)).await
     }
 
@@ -225,7 +227,7 @@ impl Webex {
         http_method: &str,
         rest_method: &str,
         body: Option<U>,
-    ) -> Result<T, String> {
+    ) -> Result<T, Error> {
         match self.call_web_api_raw(http_method, rest_method, body).await {
             Ok(reply) => {
                 let de: Result<T, _> = serde_json::from_str(reply.as_str());
@@ -234,7 +236,7 @@ impl Webex {
                     Err(e) => {
                         debug!("Couldn't parse reply for {} call: {}", rest_method, e);
                         debug!("Source JSON: {}", reply);
-                        Err(format!("failed to parse reply: {}", e))
+                        Err(text_error_with_inner(format!("failed to parse reply: {}", e), e))
                     }
                 }
             }
@@ -247,7 +249,7 @@ impl Webex {
         http_method: &str,
         rest_method: &str,
         body: Option<T>,
-    ) -> Result<String, String> {
+    ) -> Result<String, Error> {
         let default_prefix = String::from(REST_HOST_PREFIX);
         let prefix = self.host_prefix.get(rest_method).unwrap_or(&default_prefix);
         let url = format!("{}/{}", prefix, rest_method);
@@ -266,6 +268,28 @@ impl Webex {
         let req = builder.body(body).expect("request builder");
         match self.client.request(req).await {
             Ok(mut resp) => {
+                if !resp.status().is_success() {
+                    if resp.status() == hyper::StatusCode::LOCKED || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS {
+                        return Err(limited(resp.status(), match resp.headers().get("Retry-After") {
+                            None => { None }
+                            Some(timeout) => {
+                                match timeout.to_str() {
+                                    Ok(time) => {
+                                        match time.parse::<i64>() {
+                                            Ok(t) => { Some(t) }
+                                            Err(_) => { None }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        debug!("Unable to parse retry-after value: {}", e);
+                                        None
+                                    }
+                                }
+                            }
+                        }));
+                    }
+                    return Err(status_code(resp.status()));
+                }
                 let mut reply = String::new();
                 while let Some(chunk) = resp.body_mut().data().await {
                     use std::str;
@@ -276,11 +300,11 @@ impl Webex {
                 }
                 Ok(reply)
             }
-            Err(e) => Err(format!("request failed: {}", e)),
+            Err(e) => Err(text_error_with_inner(format!("request failed: {}", e), e)),
         }
     }
 
-    async fn get_devices(&self) -> Result<Vec<types::DeviceData>, String> {
+    async fn get_devices(&self) -> Result<Vec<types::DeviceData>, Error> {
         // https://developer.webex.com/docs/api/v1/devices
         match self.api_get::<types::DevicesReply>("devices").await {
             Ok(dd) => match dd.devices {
@@ -290,11 +314,11 @@ impl Webex {
                     self.setup_devices().await
                 }
             },
-            Err(e) => Err(format!("Can't decode devices reply: {}", e)),
+            Err(e) => Err(e.with_prefix("Can't decode devices reply: ")),
         }
     }
 
-    async fn setup_devices(&self) -> Result<Vec<types::DeviceData>, String> {
+    async fn setup_devices(&self) -> Result<Vec<types::DeviceData>, Error> {
         let device_data = types::DeviceData {
             device_name: Some("rust-client".to_string()),
             device_type: Some("DESKTOP".to_string()),
@@ -309,17 +333,17 @@ impl Webex {
         self.api_post("devices", device_data).await
     }
 
-    async fn get_websocket_url(&self) -> Result<String, String> {
+    async fn get_websocket_url(&self) -> Result<String, Error> {
         match self.get_devices().await?.get(0) {
             Some(device) => match &device.ws_url {
                 Some(ws_url) => Ok(ws_url.clone()),
-                None => Err("device missing webSocketUrl".to_string()),
+                None => Err(text_error("device missing webSocketUrl".to_string())),
             },
-            None => Err("no devices returned".to_string()),
+            None => Err(text_error("no devices returned".to_string())),
         }
     }
 
-    async fn ws_auth(&self, ws_stream: &mut WStream) -> Result<(), String> {
+    async fn ws_auth(&self, ws_stream: &mut WStream) -> Result<(), Error> {
         /*
          * Authenticate to the stream
          */
@@ -334,7 +358,7 @@ impl Webex {
         ws_stream
             .send(Message::Text(serde_json::to_string(&auth).unwrap()))
             .await
-            .map_err(|e| format!("failed to send authentication: {}", e))?;
+            .map_err(|e| text_error(format!("failed to send authentication: {}", e)))?;
 
         /*
          * The next thing back should be a pong
@@ -346,11 +370,11 @@ impl Webex {
                         debug!("Authentication succeeded");
                         Ok(())
                     }
-                    _ => Err(format!("Received {:?} in reply to auth message", msg)),
+                    _ => Err(text_error(format!("Received {:?} in reply to auth message", msg))),
                 },
-                Err(e) => Err(format!("Recieved error from websocket: {}", e)),
+                Err(e) => Err(text_error(format!("Received error from websocket: {}", e))),
             },
-            None => Err("Websocket closed".to_string()),
+            None => Err(text_error("Websocket closed".to_string())),
         }
     }
 }
