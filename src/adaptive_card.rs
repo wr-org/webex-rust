@@ -38,6 +38,23 @@ pub struct AdaptiveCard {
     pub schema: String,
 }
 
+impl AdaptiveCard {
+    /// Create new adaptive card with mandatory defaults
+    pub fn new() -> Self {
+        AdaptiveCard {
+            card_type: "AdaptiveCard".to_string(),
+            version: "1.1".to_string(),
+            body: None,
+            actions: None,
+            select_action: None,
+            fallback_text: None,
+            min_height: None,
+            lang: None,
+            schema: "http://adaptivecards.io/schemas/adaptive-card.json".to_string()
+        }
+    }
+}
+
 /// Card element types
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type")]

@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-#![cfg_attr(deny(warnings))]
+#![cfg_attr(test, deny(warnings))]
 #![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
 
 //! # webex-rust
