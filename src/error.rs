@@ -2,9 +2,7 @@ use std::error::Error as StdError;
 use hyper::StatusCode;
 use std::fmt;
 
-
 pub type Result<T> = std::result::Result<T, Error>;
-
 
 /// The Errors that may occur when processing a `Request`.
 pub struct Error {
