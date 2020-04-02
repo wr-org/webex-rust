@@ -1,6 +1,32 @@
+#![deny(missing_docs)]
+#![cfg_attr(test, deny(warnings))]
+
+//! # webex-rust
+//!
+//! A minimal asynchronous interface to Webex Teams, intended for (but not
+//! limited to) implementing bots.
+//!
+//! Current functionality includes:
+//!
+//! - Registration with Webex APIs
+//! - Monitoring an event stream
+//! - Sending direct or group messages
+//! - Getting room memberships
+//! - Building AdaptiveCards and retrieving responses
+//!
+//! Not all features are fully-fleshed out, particularly the AdaptiveCard
+//! support (only a few serializations exist, enough to create a form with a
+//! few choices, a text box, and a submit button).
+//!
+//! # DISCLAIMER
+//!
+//! This crate is not maintained by Cisco, and not an official SDK.  The
+//! author is a current developer at Cisco, but has no direct affiliation
+//! with the Webex development team.
+
 pub mod adaptive_card;
 pub mod types;
-pub mod error;
+mod error;
 
 use futures::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
@@ -28,9 +54,11 @@ use crate::error::{Error, status_code, text_error, text_error_with_inner, limite
 const REST_HOST_PREFIX: &str = "https://api.ciscospark.com/v1";
 const REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
+/// Web Socket Stream type
 pub type WStream = WebSocketStream<Stream<TcpStream, TlsStream<TcpStream>>>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 
+/// Webex API Client
 #[derive(Clone)]
 pub struct Webex {
     client: WebClient,
@@ -39,6 +67,7 @@ pub struct Webex {
     host_prefix: HashMap<String, String>,
 }
 
+/// Webex Event Stream handler
 pub struct WebexEventStream {
     ws_stream: WStream,
     timeout: Duration,

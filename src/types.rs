@@ -1,105 +1,132 @@
+#![deny(missing_docs)]
+//! Basic types for Webex Teams APIs
+
 use crate::adaptive_card::AdaptiveCard;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Webex Teams room information
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Room {
+    /// A unique identifier for the room.
     pub id: String,
+    /// A user-friendly name for the room.
     pub title: String,
+    /// The room type.
+    ///
+    /// direct - 1:1 room
+    /// group - group room
     #[serde(rename = "type")]
     pub room_type: String,
+    /// Whether the room is moderated (locked) or not.
     #[serde(rename = "isLocked")]
     pub is_locked: bool,
+    /// The ID for the team with which this room is associated.
     #[serde(rename = "teamId")]
     pub team_id: Option<String>,
+    /// The date and time of the room's last activity.
     #[serde(rename = "lastActivity")]
     pub last_activity: String,
+    /// The ID of the person who created this room.
     #[serde(rename = "creatorId")]
     pub creator_id: String,
+    /// The date and time the room was created.
     pub created: String,
 }
 
+/// API reply holding the room vector
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RoomsReply {
     pub items: Vec<Room>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct DirectMessage {
-    pub id: String,
-    #[serde(rename = "roomId")]
-    pub room_id: String,
-    #[serde(rename = "roomType")]
-    pub room_type: String,
-    pub text: String,
-    pub markdown: Option<String>,
-    pub files: Option<Vec<String>>,
-    #[serde(rename = "personId")]
-    pub person_id: String,
-    #[serde(rename = "personEmail")]
-    pub person_email: String,
-    pub created: String,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct DirectMessagesReply {
-    pub items: Vec<DirectMessage>,
-}
-
+/// Outgoing message
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MessageOut {
+    /// The parent message to reply to.
+    #[serde(rename = "parentId")]
+    pub parent_id: Option<String>,
+    /// The room ID of the message.
     #[serde(rename = "roomId")]
     pub room_id: Option<String>,
+    /// The person ID of the recipient when sending a private 1:1 message.
     #[serde(rename = "toPersonId")]
     pub to_person_id: Option<String>,
+    /// The email address of the recipient when sending a private 1:1 message.
     #[serde(rename = "toPersonEmail")]
     pub to_person_email: Option<String>,
+    /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text. The maximum message length is 7439 bytes.
     pub text: Option<String>,
+    /// The message, in Markdown format. The maximum message length is 7439 bytes.
     pub markdown: Option<String>,
+    /// The public URL to a binary file to be posted into the room. Only one file is allowed per message. Uploaded files are automatically converted into a format that all Webex Teams clients can render. For the supported media types and the behavior of uploads, see the [Message Attachments Guide](https://developer.webex.com/docs/api/basics#message-attachments).
     pub files: Option<Vec<String>>,
-    #[serde(rename = "mentionedPeople")]
-    pub mentioned_people: Option<Vec<String>>,
-    #[serde(rename = "mentionedGroups")]
-    pub mentioned_groups: Option<Vec<String>>,
+    /// Content attachments to attach to the message. Only one card per message is supported.
     pub attachments: Option<Vec<Attachment>>,
 }
 
+/// Webex Teams message information
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Message {
+    /// The unique identifier for the message.
     pub id: Option<String>,
+    /// The room ID of the message.
     #[serde(rename = "roomId")]
     pub room_id: Option<String>,
+    /// The room type.
+    ///
+    /// direct - 1:1 room
+    /// group - group room
     #[serde(rename = "roomType")]
     pub room_type: Option<String>,
+    /// The person ID of the recipient when sending a private 1:1 message.
     #[serde(rename = "toPersonId")]
     pub to_person_id: Option<String>,
+    /// The email address of the recipient when sending a private 1:1 message.
     #[serde(rename = "toPersonEmail")]
     pub to_person_email: Option<String>,
+    /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text.
     pub text: Option<String>,
+    /// The message, in Markdown format.
     pub markdown: Option<String>,
+    /// The text content of the message, in HTML format. This read-only property is used by the Webex Teams clients.
+    pub html: Option<String>,
+    /// Public URLs for files attached to the message. For the supported media types and the behavior of file uploads, see Message Attachments.
     pub files: Option<Vec<String>>,
+    /// The person ID of the message author.
     #[serde(rename = "personId")]
     pub person_id: Option<String>,
+    /// The email address of the message author.
     #[serde(rename = "personEmail")]
     pub person_email: Option<String>,
+    /// People IDs for anyone mentioned in the message.
     #[serde(rename = "mentionedPeople")]
     pub mentioned_people: Option<Vec<String>>,
+    /// Group names for the groups mentioned in the message.
     #[serde(rename = "mentionedGroups")]
     pub mentioned_groups: Option<Vec<String>>,
+    /// Message content attachments attached to the message.
     pub attachments: Option<Vec<Attachment>>,
+    /// The date and time the message was created.
     pub created: Option<String>,
 }
 
+/// API Message reply
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct MessagesReply {
     pub items: Vec<Message>,
 }
 
+/// API Error
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Error {
     pub description: String,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct DevicesReply {
     pub devices: Option<Vec<DeviceData>>,
@@ -109,6 +136,7 @@ pub struct DevicesReply {
     pub tracking_id: Option<String>,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct DeviceData {
     pub url: Option<String>,
@@ -130,6 +158,7 @@ pub struct DeviceData {
     pub system_version: Option<String>,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Authorization {
     pub id: String,
@@ -138,11 +167,13 @@ pub struct Authorization {
     pub data: AuthToken,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct AuthToken {
     pub token: String,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Actor {
     pub id: String,
@@ -160,6 +191,7 @@ pub struct Actor {
     pub actor_type: String,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct EventData {
     #[serde(rename = "eventType")]
@@ -170,6 +202,7 @@ pub struct EventData {
     pub activity: Option<Activity>,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Activity {
     pub id: String,
@@ -189,6 +222,7 @@ pub struct Activity {
     pub vector_counters: Option<VectorCounters>,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct VectorCounters {
     #[serde(rename = "sourceDC")]
@@ -196,6 +230,7 @@ pub struct VectorCounters {
     pub counters: HashMap<String, i64>,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Target {
     pub id: String,
@@ -207,6 +242,7 @@ pub struct Target {
     pub tags: Vec<String>,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Object {
     #[serde(rename = "objectType")]
@@ -218,11 +254,13 @@ pub struct Object {
     pub inputs: Option<String>,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MiscItems {
     pub items: Vec<MiscItem>,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MiscItem {
     pub id: String,
@@ -230,6 +268,7 @@ pub struct MiscItem {
     pub object_type: String,
 }
 
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Event {
     pub id: String,
@@ -237,7 +276,6 @@ pub struct Event {
     pub timestamp: i64,
     #[serde(rename = "trackingId")]
     pub tracking_id: String,
-
     #[serde(rename = "alertType")]
     pub alert_type: String,
     pub headers: HashMap<String, String>,
@@ -247,63 +285,93 @@ pub struct Event {
     pub filter_message: bool,
 }
 
+/// Message content attachments attached to the message.
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Attachment {
+    /// The content type of the attachment.
     #[serde(rename = "contentType")]
     pub content_type: String,
+    /// Adaptive Card content.
     pub content: AdaptiveCard,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
-pub struct AttachmentContent {
-    pub body: Vec<AttachmentContentBody>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
-pub struct AttachmentContentBody {
-    #[serde(rename = "type")]
-    pub body_type: String,
-    pub text: String,
-    pub size: String,
-}
-
+/// Attachment action details
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct AttachmentAction {
+    /// A unique identifier for the action.
     pub id: String,
+    /// The type of action performed.
     #[serde(rename = "type")]
     pub action_type: String,
+    /// The parent message the attachment action was performed on.
     #[serde(rename = "messageId")]
     pub message_id: String,
+    /// The action's inputs.
     pub inputs: HashMap<String, String>,
+    /// The ID of the person who performed the action.
     #[serde(rename = "personId")]
     pub person_id: String,
+    /// The ID of the room the action was performed within.
     #[serde(rename = "roomId")]
     pub room_id: String,
+    /// The date and time the action was created.
     pub created: String,
 }
 
+/// Person information
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Person {
+    /// A unique identifier for the person.
     pub id: String,
+    /// The email addresses of the person.
     pub emails: Vec<String>,
+    /// Phone numbers for the person.
     pub phone_numbers: Vec<PhoneNumber>,
+    /// The full name of the person.
     pub display_name: String,
+    /// The nickname of the person if configured. If no nickname is configured for the person, this field will not be present.
     pub nick_name: String,
+    /// The first name of the person.
     pub first_name: String,
+    /// The last name of the person.
     pub last_name: String,
+    /// The URL to the person's avatar in PNG format.
+    pub avatar: String,
+    /// The ID of the organization to which this person belongs.
     pub org_id: String,
+    /// The date and time the person was created.
     pub created: String,
+    /// The date and time of the person's last activity within Webex Teams.
     pub last_activity: String,
+    /// The current presence status of the person.
+    ///
+    /// active - active within the last 10 minutes
+    /// call - the user is in a call
+    /// DoNotDisturb - the user has manually set their status to "Do Not Disturb"
+    /// inactive - last activity occurred more than 10 minutes ago
+    /// meeting - the user is in a meeting
+    /// OutOfOffice - the user or a Hybrid Calendar service has indicated that they are "Out of Office"
+    /// pending - the user has never logged in; a status cannot be determined
+    /// presenting - the user is sharing content
+    /// unknown - the user’s status could not be determined
     pub status: String,
+    /// The type of person account, such as person or bot.
+    ///
+    /// person- account belongs to a person
+    /// bot - account is a bot user
+    /// appuser - account is a guest user
     #[serde(rename = "type")]
     pub person_type: String,
 }
 
+/// Phone number information
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PhoneNumber {
+    /// Phone number type
     #[serde(rename = "type")]
     pub number_type: String,
+    /// Phone number
     pub value: String,
 }

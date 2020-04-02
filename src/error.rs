@@ -2,8 +2,6 @@ use std::error::Error as StdError;
 use hyper::StatusCode;
 use std::fmt;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// The Errors that may occur when processing a `Request`.
 pub struct Error {
     inner: Box<Inner>,
@@ -33,6 +31,7 @@ impl Error {
         }
     }
 
+    /// Returns the status code, if the error was generated from a response.
     pub fn status(&self) -> Option<StatusCode> {
         match self.inner.kind {
             Kind::Status(code) => Some(code),
@@ -40,6 +39,7 @@ impl Error {
         }
     }
 
+    /// Returns the timeout value, if the error was generated from a response.
     pub fn timeout(&self) -> Option<i64> {
         match self.inner.kind {
             Kind::Status(_) => self.inner.timeout,
@@ -47,6 +47,7 @@ impl Error {
         }
     }
 
+    /// Returns true if the error is related to a timeout.
     pub fn is_timeout(&self) -> bool {
         match self.inner.timeout {
             None => { false }
