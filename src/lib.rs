@@ -209,6 +209,12 @@ impl Webex {
         self.api_get(rest_method.as_str()).await
     }
 
+    /// Delete a message by ID
+    pub async fn delete_message(&self, id: &str) -> Result<types::Message, Error> {
+        let rest_method = format!("messages/{}", id);
+        self.api_delete(rest_method.as_str()).await
+    }
+
     /// Get available rooms
     pub async fn get_rooms(&self) -> Result<Vec<types::Room>, Error> {
         let rooms_reply: Result<types::RoomsReply, _> = self.api_get("rooms").await;
@@ -254,6 +260,11 @@ impl Webex {
     async fn api_get<T: DeserializeOwned>(&self, rest_method: &str) -> Result<T, Error> {
         let body: Option<String> = None;
         self.rest_api("GET", rest_method, body).await
+    }
+
+    async fn api_delete<T: DeserializeOwned>(&self, rest_method: &str) -> Result<T, Error> {
+        let body: Option<String> = None;
+        self.rest_api("DELETE", rest_method, body).await
     }
 
     async fn api_post<T: DeserializeOwned, U: Serialize>(
