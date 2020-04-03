@@ -443,6 +443,49 @@ impl CardElement {
         }
     }
 
+    /// Create input.ChoiceSet
+    pub fn input_choice_set<T: Into<String>, S: Into<String>>(id: T, value: Option<S>) -> Self {
+        CardElement::InputChoiceSet {
+            choices: vec![],
+            id: id.into(),
+            is_multi_select: None,
+            style: None,
+            value: value.map(Into::into),
+            height: None,
+            separator: None,
+            spacing: None,
+        }
+    }
+
+    /// Create input.Toggle
+    pub fn input_toggle<T: Into<String>>(id: T, value: bool) -> Self {
+        CardElement::InputToggle {
+            id: id.into(),
+            value: Some(value.to_string()),
+            value_off: None,
+            value_on: None,
+            height: None,
+            separator: None,
+            spacing: None,
+        }
+    }
+
+    /// Set choiceSet Style
+    pub fn set_style(&mut self, s: ChoiceInputStyle) -> Self {
+        if let CardElement::InputChoiceSet {
+            choices: _, id: _, is_multi_select: _, style, value: _, height: _, separator: _, spacing: _
+        } = self { *style = Some(s); }
+        self.into()
+    }
+
+    /// Set choiceSet Style
+    pub fn set_multiselect(&mut self, b: bool) -> Self {
+        if let CardElement::InputChoiceSet {
+            choices: _, id: _, is_multi_select, style: _, value: _, height: _, separator: _, spacing: _
+        } = self { *is_multi_select = Some(b); }
+        self.into()
+    }
+
     /// Create textBlock
     ///
     /// # Arguments
@@ -544,11 +587,14 @@ impl CardElement {
     }
 
     /// Add fact to factSet
-    pub fn add_fact<T: Into<String>, S: Into<String>>(&mut self, title: T, value: S) -> Self {
+    pub fn add_key_value<T: Into<String>, S: Into<String>>(&mut self, title: T, value: S) -> Self {
         match self {
             CardElement::FactSet {
                 facts, height: _, id: _, separator: _, spacing: _,
             } => { facts.push(Fact { title: title.into(), value: value.into() }) }
+            CardElement::InputChoiceSet { choices, id: _, is_multi_select: _, style: _, value: _, height: _, separator: _, spacing: _ } => {
+                choices.push(Choice { title: title.into(), value: value.into() })
+            }
             _ => {}
         }
         self.into()
@@ -590,6 +636,12 @@ impl CardElement {
             } => { *separator = Some(s); }
             CardElement::Image {
                 url: _, alt_text: _, background_color: _, width: _, height: _, horizontal_alignment: _, select_action: _, size: _, style: _, id: _, separator, spacing: _
+            } => { *separator = Some(s); }
+            CardElement::InputChoiceSet {
+                choices: _, id: _, is_multi_select: _, style: _, value: _, height: _, separator, spacing: _
+            } => { *separator = Some(s); }
+            CardElement::InputText {
+                id: _, placeholder: _, is_multiline: _, max_length: _, style: _, inline_action: _, value: _, height: _, separator, spacing: _
             } => { *separator = Some(s); }
             _ => {}
         }
@@ -675,6 +727,12 @@ impl Column {
     /// Sets separator
     pub fn set_separator(&mut self, s: bool) -> Self {
         self.separator = Some(s);
+        self.into()
+    }
+
+    /// Sets VerticalContentAlignment
+    pub fn set_vertical_alignment(&mut self, s: VerticalContentAlignment) -> Self {
+        self.vertical_content_alignment = Some(s);
         self.into()
     }
 
@@ -834,6 +892,8 @@ pub enum Action {
         data: Option<HashMap<String, String>>,
         /// Label for button or link that represents this action.
         title: Option<String>,
+        /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
+        style: Option<ActionStyle>
     },
     /// When invoked, show the given url either by launching it in an external web browser or showing within an embedded web browser.
     #[serde(rename = "Action.OpenUrl")]
@@ -842,6 +902,8 @@ pub enum Action {
         url: String,
         /// Label for button or link that represents this action.
         title: Option<String>,
+        /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
+        style: Option<ActionStyle>
     },
     /// Defines an AdaptiveCard which is shown to the user when the button or link is clicked.
     #[serde(rename = "Action.ShowCard")]
@@ -850,7 +912,21 @@ pub enum Action {
         card: AdaptiveCard,
         /// Label for button or link that represents this action.
         title: Option<String>,
+        /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
+        style: Option<ActionStyle>
     },
+}
+
+/// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
+#[allow(missing_docs)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum ActionStyle {
+    /// Action is displayed as normal
+    Default,
+    /// Action is displayed with a positive style (typically the button becomes accent color)
+    Positive,
+    /// Action is displayed with a destructive style (typically the button becomes red)
+    Destructive,
 }
 
 /// Describes a choice for use in a ChoiceSet.
