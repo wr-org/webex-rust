@@ -42,6 +42,8 @@ use tokio_tungstenite::{connect_async, WebSocketStream};
 use tungstenite::protocol::Message;
 use uuid::Uuid;
 use crate::error::{Error, status_code, text_error, text_error_with_inner, limited};
+use crate::adaptive_card::AdaptiveCard;
+use crate::types::Attachment;
 
 /*
  * URLs:
@@ -222,6 +224,16 @@ impl Webex {
         let people_reply: Result<types::Person, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
             Err(e) => Err(e.with_prefix("people failed: ")),
+            Ok(pr) => Ok(pr),
+        }
+    }
+
+    /// Get information about attachment action
+    pub async fn get_action(&self, id: &str) -> Result<types::Action, Error> {
+        let rest_method = format!("attachment/actions/{}", id);
+        let people_reply: Result<types::Action, _> = self.api_get(rest_method.as_str()).await;
+        match people_reply {
+            Err(e) => Err(e.with_prefix("action failed: ")),
             Ok(pr) => Ok(pr),
         }
     }
@@ -409,15 +421,18 @@ impl Webex {
     }
 }
 
-impl types::MessageOut {
-    /// Generates a new outgoing message from an existing message
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - the template message
-    ///
-    /// Use `from_msg` to create a reply from a received message.
-    pub fn from_msg(msg: &types::Message) -> Self {
+impl From<&types::Action> for types::MessageOut {
+    fn from(action: &types::Action) -> Self {
+        let mut new_msg: Self = Default::default();
+
+        new_msg.room_id = action.room_id.clone();
+
+        new_msg
+    }
+}
+
+impl From<&types::Message> for types::MessageOut {
+    fn from(msg: &types::Message) -> Self {
         let mut new_msg: Self = Default::default();
 
         if msg.room_type == Some("group".to_string()) {
@@ -429,5 +444,32 @@ impl types::MessageOut {
         }
 
         new_msg
+    }
+}
+
+impl types::MessageOut {
+    /// Generates a new outgoing message from an existing message
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - the template message
+    ///
+    /// Use `from_msg` to create a reply from a received message.
+    #[deprecated(
+    since = "0.2.0",
+    note = "Please use the from instead"
+    )]
+    pub fn from_msg(msg: &types::Message) -> Self {
+        Self::from(msg)
+    }
+
+    /// Add attachment to an existing message
+    ///
+    /// # Arguments
+    ///
+    /// * `card` - Adaptive Card to attach
+    pub fn add_attachment(&mut self, card: AdaptiveCard) -> &Self {
+        self.attachments = Some(vec![Attachment { content_type: "application/vnd.microsoft.card.adaptive".to_string(), content: card }]);
+        self
     }
 }

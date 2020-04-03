@@ -375,3 +375,24 @@ pub struct PhoneNumber {
     /// Phone number
     pub value: String,
 }
+
+/// Details for Attachment Action
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Action {
+    /// A unique identifier for the action.
+    pub id: String,
+    /// The type of action performed.
+    #[serde(rename = "type")]
+    pub type_field: Option<String>,
+    /// The parent message the attachment action was performed on.
+    pub message_id: Option<String>,
+    /// The action's inputs.
+    pub inputs: Option<HashMap<String, String>>,
+    /// The ID of the person who performed the action.
+    pub person_id: Option<String>,
+    /// The ID of the room the action was performed within.
+    pub room_id: Option<String>,
+    /// The date and time the action was created.
+    pub created: Option<String>,
+}

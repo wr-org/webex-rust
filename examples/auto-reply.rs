@@ -46,7 +46,7 @@ async fn main() {
                             // that don't specifically mention them (i.e., appears in the special
                             // "mentions" field).
                             Some(sender) if sender != bot_email.as_str() => {
-                                let mut reply = webex::types::MessageOut::from_msg(&msg);
+                                let mut reply = webex::types::MessageOut::from(&msg);
                                 reply.text =
                                     Some(format!("{}, you said: {}", sender, msg.text.unwrap()));
                                 webex.send_message(&reply).await.unwrap();
