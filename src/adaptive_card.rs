@@ -50,8 +50,52 @@ impl AdaptiveCard {
             fallback_text: None,
             min_height: None,
             lang: None,
-            schema: "http://adaptivecards.io/schemas/adaptive-card.json".to_string()
+            schema: "http://adaptivecards.io/schemas/adaptive-card.json".to_string(),
         }
+    }
+
+    /// Adds Element to body
+    ///
+    /// # Arguments
+    ///
+    /// * `card` - CardElement to add
+    pub fn add_body<T: Into<CardElement>>(&mut self, card: T) -> Self {
+        self.body = Some(match self.body.clone() {
+            None => { vec![card.into()] }
+            Some(mut body) => {
+                body.push(card.into());
+                body
+            }
+        });
+        self.into()
+    }
+
+    /// Adds Actions
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - Action to add
+    pub fn add_action<T: Into<Action>>(&mut self, a: T) -> Self {
+        self.actions = Some(match self.actions.clone() {
+            None => { vec![a.into()] }
+            Some(mut action) => {
+                action.push(a.into());
+                action
+            }
+        });
+        self.into()
+    }
+}
+
+impl From<&AdaptiveCard> for AdaptiveCard {
+    fn from(item: &AdaptiveCard) -> Self {
+        item.clone()
+    }
+}
+
+impl From<&mut AdaptiveCard> for AdaptiveCard {
+    fn from(item: &mut AdaptiveCard) -> Self {
+        item.clone()
     }
 }
 
@@ -101,7 +145,7 @@ pub enum CardElement {
     /// The FactSet element displays a series of facts (i.e. name/value pairs) in a tabular form.
     FactSet {
         /// 	The array of Fact‘s.
-        facts: Vec<Column>,
+        facts: Vec<Fact>,
         /// Specifies the height of the element.
         height: Option<Height>,
         /// A unique identifier associated with the item.
@@ -146,6 +190,9 @@ pub enum CardElement {
         /// Specifies the maximum number of lines to display.
         #[serde(rename = "maxLines")]
         max_lines: Option<u64>,
+        /// Specifies the font type
+        #[serde(rename = "fontType")]
+        font_type: Option<FontType>,
         /// Controls size of text.
         size: Option<Size>,
         /// Controls the weight of TextBlock elements.
@@ -208,6 +255,9 @@ pub enum CardElement {
         max_length: Option<u64>,
         /// Text Input Style
         style: Option<TextInputStyle>,
+        /// The inline action for the input. Typically displayed to the right of the input.
+        #[serde(rename = "inlineAction")]
+        inline_action: Option<Action>,
         /// The initial value for this field.
         value: Option<String>,
         /// Specifies the height of the element.
@@ -331,6 +381,241 @@ pub enum CardElement {
     },
 }
 
+impl From<&CardElement> for CardElement {
+    fn from(item: &CardElement) -> Self {
+        item.clone()
+    }
+}
+
+impl From<&mut CardElement> for CardElement {
+    fn from(item: &mut CardElement) -> Self {
+        item.clone()
+    }
+}
+
+/// Functions for Card Element
+impl CardElement {
+    /// Create container
+    pub fn container() -> Self {
+        CardElement::Container {
+            items: vec![],
+            select_action: None,
+            style: None,
+            vertical_content_alignment: None,
+            height: None,
+            id: None,
+            separator: None,
+            spacing: None,
+        }
+    }
+
+    /// Add element to Container
+    pub fn add_element<T: Into<CardElement>>(&mut self, element: T) -> Self {
+        match self {
+            CardElement::Container {
+                items, select_action: _, style: _, vertical_content_alignment: _, height: _, id: _, separator: _, spacing: _
+            } => { items.push(element.into()) }
+            _ => {}
+        }
+        self.into()
+    }
+
+    /// Set Container Style
+    pub fn set_container_style(&mut self, s: ContainerStyle) -> Self {
+        if let CardElement::Container {
+            items: _, select_action: _, style, vertical_content_alignment: _, height: _, id: _, separator: _, spacing: _
+        } = self { *style = Some(s); }
+        self.into()
+    }
+    /// Create input.Text
+    pub fn input_text<T: Into<String>, S: Into<String>>(id: T, value: Option<S>) -> Self {
+        CardElement::InputText {
+            id: id.into(),
+            placeholder: None,
+            is_multiline: None,
+            max_length: None,
+            style: None,
+            inline_action: None,
+            value: value.map(Into::into),
+            height: None,
+            separator: None,
+            spacing: None,
+        }
+    }
+
+    /// Create textBlock
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Text to set to the new text block(Must implement Into<String>
+    pub fn text_block<T: Into<String>>(text: T) -> Self {
+        CardElement::TextBlock {
+            text: text.into(),
+            wrap: None,
+            color: None,
+            horizontal_alignment: None,
+            is_subtle: None,
+            max_lines: None,
+            font_type: None,
+            size: None,
+            weight: None,
+            height: None,
+            id: None,
+            separator: None,
+            spacing: None,
+        }
+    }
+
+    /// Set Text Weight
+    pub fn set_weight(&mut self, w: Weight) -> Self {
+        if let CardElement::TextBlock {
+            text: _, wrap: _, color: _, horizontal_alignment: _, is_subtle: _, max_lines: _, font_type: _, size: _, weight, height: _, id: _, separator: _, spacing: _
+        } = self { *weight = Some(w); }
+        self.into()
+    }
+
+    /// Set Text Font Type
+    pub fn set_font(&mut self, f: FontType) -> Self {
+        if let CardElement::TextBlock {
+            text: _, wrap: _, color: _, horizontal_alignment: _, is_subtle: _, max_lines: _, font_type, size: _, weight: _, height: _, id: _, separator: _, spacing: _
+        } = self { *font_type = Some(f); }
+        self.into()
+    }
+
+    /// Set Text Size
+    pub fn set_size(&mut self, s: Size) -> Self {
+        if let CardElement::TextBlock {
+            text: _, wrap: _, color: _, horizontal_alignment: _, is_subtle: _, font_type: _, max_lines: _, size, weight: _, height: _, id: _, separator: _, spacing: _
+        } = self { *size = Some(s); }
+        self.into()
+    }
+
+    /// Set Text Color
+    pub fn set_color(&mut self, c: Color) -> Self {
+        if let CardElement::TextBlock {
+            text: _, wrap: _, color, horizontal_alignment: _, font_type: _, is_subtle: _, max_lines: _, size: _, weight: _, height: _, id: _, separator: _, spacing: _
+        } = self { *color = Some(c); }
+        self.into()
+    }
+
+    /// Set Text wrap
+    pub fn set_wrap(&mut self, w: bool) -> Self {
+        if let CardElement::TextBlock {
+            text: _, wrap, color: _, horizontal_alignment: _, font_type: _, is_subtle: _, max_lines: _, size: _, weight: _, height: _, id: _, separator: _, spacing: _
+        } = self { *wrap = Some(w); }
+        self.into()
+    }
+
+    /// Set Text subtle
+    pub fn set_subtle(&mut self, s: bool) -> Self {
+        if let CardElement::TextBlock {
+            text: _, wrap: _, color: _, horizontal_alignment: _, font_type: _, is_subtle, max_lines: _, size: _, weight: _, height: _, id: _, separator: _, spacing: _
+        } = self { *is_subtle = Some(s); }
+        self.into()
+    }
+
+    /// Create factSet
+    pub fn fact_set() -> CardElement {
+        CardElement::FactSet {
+            facts: vec![],
+            height: None,
+            id: None,
+            separator: None,
+            spacing: None,
+        }
+    }
+
+    /// Create image
+    pub fn image<T: Into<String>>(url: T) -> CardElement {
+        CardElement::Image {
+            url: url.into(),
+            alt_text: None,
+            background_color: None,
+            width: None,
+            height: None,
+            horizontal_alignment: None,
+            select_action: None,
+            size: None,
+            style: None,
+            id: None,
+            separator: None,
+            spacing: None,
+        }
+    }
+
+    /// Add fact to factSet
+    pub fn add_fact<T: Into<String>, S: Into<String>>(&mut self, title: T, value: S) -> Self {
+        match self {
+            CardElement::FactSet {
+                facts, height: _, id: _, separator: _, spacing: _,
+            } => { facts.push(Fact { title: title.into(), value: value.into() }) }
+            _ => {}
+        }
+        self.into()
+    }
+
+    /// Create columnSet
+    pub fn column_set() -> CardElement {
+        CardElement::ColumnSet {
+            columns: vec![],
+            select_action: None,
+            height: None,
+            id: None,
+            separator: None,
+            spacing: None,
+        }
+    }
+
+    /// Add column to columnSet
+    pub fn add_column(&mut self, column: Column) -> Self {
+        match self {
+            CardElement::ColumnSet {
+                columns, select_action: _, height: _, id: _, separator: _, spacing: _
+            } => { columns.push(column) }
+            _ => {}
+        }
+        self.into()
+    }
+
+    /// Set Separator
+    pub fn set_separator(&mut self, s: bool) -> Self {
+        match self {
+            CardElement::TextBlock {
+                text: _, wrap: _, color: _, horizontal_alignment: _, font_type: _, is_subtle: _, max_lines: _, size: _, weight: _, height: _, id: _, separator, spacing: _
+            } => { *separator = Some(s); }
+            CardElement::FactSet {
+                facts: _, height: _, id: _, separator, spacing: _, } => { *separator = Some(s); }
+            CardElement::ColumnSet {
+                columns: _, select_action: _, height: _, id: _, separator, spacing: _
+            } => { *separator = Some(s); }
+            CardElement::Image {
+                url: _, alt_text: _, background_color: _, width: _, height: _, horizontal_alignment: _, select_action: _, size: _, style: _, id: _, separator, spacing: _
+            } => { *separator = Some(s); }
+            _ => {}
+        }
+        self.into()
+    }
+
+    /// Create actionSet
+    pub fn action_set() -> CardElement {
+        CardElement::ActionSet {
+            actions: vec![],
+            height: None,
+        }
+    }
+
+    /// Add action to actionSet
+    pub fn add_action_to_set(&mut self, action: Action) -> Self {
+        match self {
+            CardElement::ActionSet {
+                actions, height: _
+            } => { actions.push(action) }
+            _ => {}
+        }
+        self.into()
+    }
+}
+
 /// Defines a container that is part of a ColumnSet.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Column {
@@ -352,6 +637,52 @@ pub struct Column {
     width: Option<String>,
     /// A unique identifier associated with the item.
     id: Option<String>,
+}
+
+impl From<&Column> for Column {
+    fn from(item: &Column) -> Self {
+        item.clone()
+    }
+}
+
+impl From<&mut Column> for Column {
+    fn from(item: &mut Column) -> Self {
+        item.clone()
+    }
+}
+
+impl Column {
+    /// Creates new Column
+    pub fn new() -> Self {
+        Column {
+            items: vec![],
+            select_action: None,
+            style: None,
+            vertical_content_alignment: None,
+            separator: None,
+            spacing: None,
+            width: None,
+            id: None,
+        }
+    }
+
+    /// Adds element to column
+    pub fn add_element(&mut self, item: CardElement) -> Self {
+        self.items.push(item);
+        self.into()
+    }
+
+    /// Sets separator
+    pub fn set_separator(&mut self, s: bool) -> Self {
+        self.separator = Some(s);
+        self.into()
+    }
+
+    /// Sets width
+    pub fn set_width<T: Into<String>>(&mut self, s: T) -> Self {
+        self.width = Some(s.into());
+        self.into()
+    }
 }
 
 /// Describes a Fact in a FactSet as a key/value pair.
@@ -453,6 +784,14 @@ pub enum Weight {
     Bolder,
 }
 
+/// Type of font to use for rendering
+#[allow(missing_docs)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum FontType {
+    Default,
+    Monospace,
+}
+
 /// Text Size
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -496,7 +835,6 @@ pub enum Action {
         /// Label for button or link that represents this action.
         title: Option<String>,
     },
-
     /// When invoked, show the given url either by launching it in an external web browser or showing within an embedded web browser.
     #[serde(rename = "Action.OpenUrl")]
     OpenUrl {
@@ -505,7 +843,6 @@ pub enum Action {
         /// Label for button or link that represents this action.
         title: Option<String>,
     },
-
     /// Defines an AdaptiveCard which is shown to the user when the button or link is clicked.
     #[serde(rename = "Action.ShowCard")]
     ShowCard {
