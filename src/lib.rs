@@ -210,7 +210,7 @@ impl Webex {
     }
 
     /// Delete a message by ID
-    pub async fn delete_message(&self, id: &str) -> Result<types::Message, Error> {
+    pub async fn delete_message(&self, id: &str) -> Result<types::EmptyReply, Error> {
         let rest_method = format!("messages/{}", id);
         self.api_delete(rest_method.as_str()).await
     }

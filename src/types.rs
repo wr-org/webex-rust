@@ -119,6 +119,11 @@ pub struct MessagesReply {
     pub items: Vec<Message>,
 }
 
+/// API Empty reply
+#[allow(missing_docs)]
+#[derive(Deserialize, Serialize, Debug)]
+pub struct EmptyReply {}
+
 /// API Error
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
