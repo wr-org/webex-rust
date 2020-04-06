@@ -77,7 +77,6 @@ impl fmt::Display for Error {
                 let prefix = if code.is_client_error() {
                     "HTTP status client error"
                 } else {
-                    debug_assert!(code.is_server_error());
                     "HTTP status server error"
                 };
                 write!(f, "{} ({})", prefix, code)?;
