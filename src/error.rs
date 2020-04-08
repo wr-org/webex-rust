@@ -122,12 +122,12 @@ pub(crate) enum Kind {
     Status(StatusCode),
 }
 
-pub(crate) fn text_error(message: String) -> Error {
-    Error::new(Kind::Text(message), None::<Error>)
+pub(crate) fn text_error<T: Into<String>>(message: T) -> Error {
+    Error::new(Kind::Text(message.into()), None::<Error>)
 }
 
-pub(crate) fn text_error_with_inner<E: Into<BoxError>>(message: String, e: E) -> Error {
-    Error::new(Kind::Text(message), Some(e))
+pub(crate) fn text_error_with_inner<T: Into<String>, E: Into<BoxError>>(message: T, e: E) -> Error {
+    Error::new(Kind::Text(message.into()), Some(e))
 }
 
 pub(crate) fn status_code(status: StatusCode) -> Error {

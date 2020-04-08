@@ -443,6 +443,14 @@ impl CardElement {
         }
     }
 
+    /// Set Text Input Multiline
+    pub fn set_multiline(&mut self, s: bool) -> Self {
+        if let CardElement::InputText {
+            id:_, placeholder:_, is_multiline, max_length:_, style:_, inline_action:_, value:_, height:_, separator:_, spacing:_
+        } = self { *is_multiline = Some(s); }
+        self.into()
+    }
+
     /// Create input.ChoiceSet
     pub fn input_choice_set<T: Into<String>, S: Into<String>>(id: T, value: Option<S>) -> Self {
         CardElement::InputChoiceSet {
@@ -643,6 +651,32 @@ impl CardElement {
             CardElement::InputText {
                 id: _, placeholder: _, is_multiline: _, max_length: _, style: _, inline_action: _, value: _, height: _, separator, spacing: _
             } => { *separator = Some(s); }
+            _ => {}
+        }
+        self.into()
+    }
+
+    /// Set Spacing
+    pub fn set_spacing(&mut self, s: Spacing) -> Self {
+        match self {
+            CardElement::TextBlock {
+                text: _, wrap: _, color: _, horizontal_alignment: _, font_type: _, is_subtle: _, max_lines: _, size: _, weight: _, height: _, id: _, separator: _, spacing
+            } => { *spacing = Some(s); }
+            CardElement::FactSet {
+                facts: _, height: _, id: _, separator: _, spacing,
+            } => { *spacing = Some(s); }
+            CardElement::ColumnSet {
+                columns: _, select_action: _, height: _, id: _, separator: _, spacing
+            } => { *spacing = Some(s); }
+            CardElement::Image {
+                url: _, alt_text: _, background_color: _, width: _, height: _, horizontal_alignment: _, select_action: _, size: _, style: _, id: _, separator: _, spacing
+            } => { *spacing = Some(s); }
+            CardElement::InputChoiceSet {
+                choices: _, id: _, is_multi_select: _, style: _, value: _, height: _, separator: _, spacing
+            } => { *spacing = Some(s); }
+            CardElement::InputText {
+                id: _, placeholder: _, is_multiline: _, max_length: _, style: _, inline_action: _, value: _, height: _, separator: _, spacing
+            } => { *spacing = Some(s); }
             _ => {}
         }
         self.into()
@@ -893,7 +927,7 @@ pub enum Action {
         /// Label for button or link that represents this action.
         title: Option<String>,
         /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
-        style: Option<ActionStyle>
+        style: Option<ActionStyle>,
     },
     /// When invoked, show the given url either by launching it in an external web browser or showing within an embedded web browser.
     #[serde(rename = "Action.OpenUrl")]
@@ -903,7 +937,7 @@ pub enum Action {
         /// Label for button or link that represents this action.
         title: Option<String>,
         /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
-        style: Option<ActionStyle>
+        style: Option<ActionStyle>,
     },
     /// Defines an AdaptiveCard which is shown to the user when the button or link is clicked.
     #[serde(rename = "Action.ShowCard")]
@@ -913,7 +947,7 @@ pub enum Action {
         /// Label for button or link that represents this action.
         title: Option<String>,
         /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
-        style: Option<ActionStyle>
+        style: Option<ActionStyle>,
     },
 }
 
