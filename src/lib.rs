@@ -168,17 +168,56 @@ impl Webex {
 
     /// Get an event stream handle
     pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
-        /*
-         * Determine the correct endpoint
-         */
-        let ws_url = self.get_websocket_url().await?;
+        let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
+            Ok(d) => { d }
+            Err(e) => { return Err(text_error_with_inner("Failed to get devices".to_string(), e)); }
+        };
 
-        /*
-         * Connect to the event stream
-         */
+        devices.sort_by(|a: &types::DeviceData, b: &types::DeviceData| b.modification_time.unwrap_or(chrono::Utc::now()).cmp(&a.modification_time.unwrap_or(chrono::Utc::now())));
+
+        for device in devices {
+            match device.ws_url {
+                Some(ws_url) => {
+                    let url = match url::Url::parse(ws_url.as_str()) {
+                        Ok(u) => { u }
+                        Err(e) => {
+                            warn!("Failed to parse {:?}", e);
+                            continue;
+                        }
+                    };
+                    debug!("Connecting to {:?}", url);
+                    match connect_async(url.clone()).await {
+                        Ok((mut ws_stream, _response)) => {
+                            debug!("Connected to {}", url);
+                            self.ws_auth(&mut ws_stream).await?;
+
+                            let timeout = Duration::from_secs(20);
+                            return Ok(WebexEventStream { ws_stream, timeout });
+                        }
+                        Err(e) => {
+                            warn!("Failed to connect to {:?}: {:?}", url, e);
+                            continue;
+                        }
+                    };
+                }
+                None => {}
+            }
+        }
+
+        let ws_url = match self.setup_devices().await {
+            Ok(d) => {
+                match d.ws_url {
+                    Some(url) => url.clone(),
+                    None => return Err(text_error("Registered device has no ws url"))
+                }
+            }
+            Err(e) => { return Err(text_error_with_inner("Failed to setup device: ", e)); }
+        };
+
         let url = url::Url::parse(ws_url.as_str())
             .map_err(|e| text_error_with_inner(format!("Unable to parse WS URL: {}", e), e))?;
         debug!("Connecting to {:?}", url);
+
 
         let (mut ws_stream, _response) = connect_async(url.clone())
             .await
@@ -364,36 +403,29 @@ impl Webex {
                 Some(devices) => Ok(devices),
                 None => {
                     debug!("Chaining one-time device setup from devices query");
-                    self.setup_devices().await
+                    match self.setup_devices().await {
+                        Ok(device) => { Ok(vec![device]) }
+                        Err(e) => { Err(e) }
+                    }
                 }
             },
             Err(e) => Err(e.with_prefix("Can't decode devices reply: ")),
         }
     }
 
-    async fn setup_devices(&self) -> Result<Vec<types::DeviceData>, Error> {
+    async fn setup_devices(&self) -> Result<types::DeviceData, Error> {
         let device_data = types::DeviceData {
             device_name: Some("rust-client".to_string()),
             device_type: Some("DESKTOP".to_string()),
             localized_model: Some("rust".to_string()),
             model: Some("rust".to_string()),
             name: Some("rust-spark-client".to_string()),
-            system_name: "rust-spark-client".to_string(),
+            system_name: Some("rust-spark-client".to_string()),
             system_version: Some("0.1".to_string()),
             ..Default::default()
         };
 
         self.api_post("devices", device_data).await
-    }
-
-    async fn get_websocket_url(&self) -> Result<String, Error> {
-        match self.get_devices().await?.get(0) {
-            Some(device) => match &device.ws_url {
-                Some(ws_url) => Ok(ws_url.clone()),
-                None => Err(text_error("device missing webSocketUrl".to_string())),
-            },
-            None => Err(text_error("no devices returned".to_string())),
-        }
     }
 
     async fn ws_auth(&self, ws_stream: &mut WStream) -> Result<(), Error> {

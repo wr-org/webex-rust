@@ -143,24 +143,115 @@ pub struct DevicesReply {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceData {
     pub url: Option<String>,
     #[serde(rename = "webSocketUrl")]
     pub ws_url: Option<String>,
     #[serde(skip_serializing)]
     pub services: Option<HashMap<String, String>>,
-    #[serde(rename = "deviceName")]
     pub device_name: Option<String>,
-    #[serde(rename = "deviceType")]
     pub device_type: Option<String>,
-    #[serde(rename = "localizedModel")]
     pub localized_model: Option<String>,
+    pub capabilities: Option<DeviceCapabilities>,
+    pub features: Option<DeviceFeatures>,
+    pub creation_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub modification_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub device_settings_string: Option<String>,
+    pub show_support_text: Option<bool>,
+    pub reporting_site_url: Option<String>,
+    pub reporting_site_desc: Option<String>,
+    pub is_device_managed: Option<bool>,
+    pub client_security_policy: Option<String>,
+    pub intranet_inactivity_check_url: Option<String>,
     pub model: Option<String>,
     pub name: Option<String>,
-    #[serde(rename = "systemName")]
-    pub system_name: String,
-    #[serde(rename = "systemVersion")]
+    pub system_name: Option<String>,
     pub system_version: Option<String>,
+    pub block_external_communications: Option<bool>,
+    pub client_messaging_giphy: Option<String>,
+    pub client_messaging_link_preview: Option<String>,
+    pub ecm_enabled_for_all_users: Option<bool>,
+    pub ecm_supported_storage_providers: Vec<String>,
+    pub default_ecm_microsoft_cloud: Option<String>,
+    pub ecm_microsoft_tenant: Option<String>,
+    pub ecm_screen_capture_feature_allowed: Option<bool>,
+    pub ecm_whiteboard_file_data_allowed: Option<bool>,
+    pub calling_behavior: Option<String>,
+    pub on_premise_pairing_enabled: Option<bool>,
+    pub people_insights_enabled: Option<bool>,
+    pub allow_self_signed_certificate: Option<bool>,
+    pub webex_cross_launch: Option<bool>,
+    pub settings: Option<DeviceSettings>,
+    pub user_id: Option<String>,
+    pub org_id: Option<String>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(missing_docs)]
+pub struct DeviceFeatures {
+    pub developer: Option<Vec<DeviceFeatureData>>,
+    pub entitlement: Option<Vec<DeviceFeatureData>>,
+    pub user: Option<Vec<DeviceFeatureData>>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(missing_docs)]
+pub struct DeviceFeatureData {
+    pub key: Option<String>,
+    pub val: Option<String>,
+    pub mutable: Option<bool>,
+    pub last_modified: Option<String>,
+    #[serde(rename = "type")]
+    pub type_field: Option<String>,
+    pub deleted_time: Option<i64>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(missing_docs)]
+pub struct DeviceCapabilities {
+    pub group_call_supported: bool,
+    pub local_notification_supported: bool,
+    pub delete_notification_supported: bool,
+    pub sdp_supported: bool,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(missing_docs)]
+pub struct DeviceSettings {
+    pub reporting_site_url: String,
+    pub reporting_site_desc: String,
+    pub show_support_text: bool,
+    pub webex_cross_launch: bool,
+    pub enable_intra_org_teams_call: bool,
+    pub mobile_suppress_lock_screen_preview: bool,
+    pub mobile_auto_lock_idle_timeout: i64,
+    pub disable_meeting_scheduling: bool,
+    pub ecm_enabled_for_all_users: bool,
+    pub ecm_supported_storage_providers: Vec<String>,
+    pub ecm_supported_folder_providers: Vec<String>,
+    pub default_ecm_microsoft_cloud: String,
+    pub ecm_microsoft_tenant: String,
+    pub default_file_upload_location: String,
+    pub restrict_accounts_to_email_domain: bool,
+    pub ecm_screen_capture_feature_allowed: bool,
+    pub ecm_whiteboard_file_data_allowed: bool,
+    pub on_premise_pairing_enabled: bool,
+    pub calling_behavior: String,
+    pub client_messaging_giphy: String,
+    pub client_messaging_link_preview: String,
+    pub client_security_policy: String,
+    pub intranet_inactivity_check_url: String,
+    pub people_insights_enabled: bool,
+    pub allow_self_signed_certificate: bool,
+    pub block_external_communications: bool,
+    pub reactions_enabled: bool,
+    pub team_guest_member_restriction_enabled: bool,
+    pub space_classifications_enabled: bool,
 }
 
 #[allow(missing_docs)]
