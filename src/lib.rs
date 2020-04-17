@@ -204,6 +204,7 @@ impl Webex {
             }
         }
 
+        // Failed to connect to any existing devices, creating new one
         let ws_url = match self.setup_devices().await {
             Ok(d) => {
                 match d.ws_url {
@@ -217,7 +218,6 @@ impl Webex {
         let url = url::Url::parse(ws_url.as_str())
             .map_err(|e| text_error_with_inner(format!("Unable to parse WS URL: {}", e), e))?;
         debug!("Connecting to {:?}", url);
-
 
         let (mut ws_stream, _response) = connect_async(url.clone())
             .await
