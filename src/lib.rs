@@ -68,6 +68,8 @@ pub struct Webex {
     bearer: String,
     token: String,
     host_prefix: HashMap<String, String>,
+    /// Webex Device Information used for device registration
+    pub device: types::DeviceData
 }
 
 /// Webex Event Stream handler
@@ -157,6 +159,16 @@ impl Webex {
             token: token.to_string(),
             bearer: format!("Bearer {}", token),
             host_prefix: HashMap::new(),
+            device: types::DeviceData {
+                device_name: Some("rust-client".to_string()),
+                device_type: Some("DESKTOP".to_string()),
+                localized_model: Some("rust".to_string()),
+                model: Some("rust".to_string()),
+                name: Some("rust-spark-client".to_string()),
+                system_name: Some("rust-spark-client".to_string()),
+                system_version: Some("0.1".to_string()),
+                ..Default::default()
+            }
         };
 
         webex
@@ -424,18 +436,7 @@ impl Webex {
     }
 
     async fn setup_devices(&self) -> Result<types::DeviceData, Error> {
-        let device_data = types::DeviceData {
-            device_name: Some("rust-client".to_string()),
-            device_type: Some("DESKTOP".to_string()),
-            localized_model: Some("rust".to_string()),
-            model: Some("rust".to_string()),
-            name: Some("rust-spark-client".to_string()),
-            system_name: Some("rust-spark-client".to_string()),
-            system_version: Some("0.1".to_string()),
-            ..Default::default()
-        };
-
-        self.api_post("devices", device_data).await
+        self.api_post("devices", self.device.clone()).await
     }
 
     async fn ws_auth(&self, ws_stream: &mut WStream) -> Result<(), Error> {
