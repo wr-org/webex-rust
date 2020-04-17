@@ -409,7 +409,17 @@ impl Webex {
                     }
                 }
             },
-            Err(e) => Err(e.with_prefix("Can't decode devices reply: ")),
+            Err(e) => {
+                if e.status() == Some(hyper::StatusCode::NOT_FOUND) {
+                    debug!("No devices found, creating new one");
+                    match self.setup_devices().await {
+                        Ok(device) => { Ok(vec![device]) }
+                        Err(e) => { Err(e) }
+                    }
+                } else {
+                    Err(e.with_prefix("Can't decode devices reply: "))
+                }
+            }
         }
     }
 
