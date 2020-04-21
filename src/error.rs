@@ -1,139 +1,27 @@
-use std::error::Error as StdError;
+use serde_json::error::Error as SerdeError;
 use hyper::StatusCode;
-use std::fmt;
+use tungstenite;
 
-/// The Errors that may occur when processing a `Request`.
-pub struct Error {
-    inner: Box<Inner>,
-}
-
-pub(crate) type BoxError = Box<dyn StdError + Send + Sync>;
-
-struct Inner {
-    kind: Kind,
-    description: String,
-    timeout: Option<i64>,
-    source: Option<BoxError>,
-}
-
-impl Error {
-    pub(crate) fn new<E>(kind: Kind, source: Option<E>) -> Error
-        where
-            E: Into<BoxError>,
-    {
-        Error {
-            inner: Box::new(Inner {
-                kind,
-                source: source.map(Into::into),
-                timeout: None,
-                description: "".to_string(),
-            }),
-        }
+error_chain! {
+    foreign_links {
+        Io(std::io::Error);
+        Json(SerdeError);
+        UTF8(std::string::FromUtf8Error);
     }
-
-    /// Returns the status code, if the error was generated from a response.
-    pub fn status(&self) -> Option<StatusCode> {
-        match self.inner.kind {
-            Kind::Status(code) => Some(code),
-            _ => None,
-        }
-    }
-
-    /// Returns the timeout value, if the error was generated from a response.
-    pub fn timeout(&self) -> Option<i64> {
-        match self.inner.kind {
-            Kind::Status(_) => self.inner.timeout,
-            _ => None,
-        }
-    }
-
-    /// Returns true if the error is related to a timeout.
-    pub fn is_timeout(&self) -> bool {
-        match self.inner.timeout {
-            None => { false }
-            Some(_) => { true }
-        }
-    }
-
-    pub(crate) fn with_timeout(mut self, timeout: Option<i64>) -> Error {
-        self.inner.timeout = timeout;
-        self
-    }
-
-    pub(crate) fn with_prefix<E: std::fmt::Display>(mut self, prefix: E) -> Error {
-        self.inner.description = format!("{}{}", prefix, self.inner.description);
-        self
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.inner.description)?;
-        match self.inner.kind {
-            Kind::Text(ref text) => {
-                write!(f, "{}", text)?;
-            }
-            Kind::Status(ref code) => {
-                let prefix = if code.is_client_error() {
-                    "HTTP status client error"
-                } else {
-                    "HTTP status server error"
-                };
-                write!(f, "{} ({})", prefix, code)?;
-            }
-        };
-
-        if let Some(ref t) = self.inner.timeout {
-            write!(f, " (timeout {})", t)?;
+    errors {
+        Status(s: StatusCode) {
+            description("HTTP Status Code")
+            display("HTTP Status: '{}'", s)
         }
 
-        if let Some(ref e) = self.inner.source {
-            write!(f, ": {}", e)?;
+        Limited(s: StatusCode, t: Option<i64>) {
+            description("Reached API Limits")
+            display("{} Retry in: '{:?}'", s, t)
         }
 
-        Ok(())
-    }
-}
-
-impl fmt::Debug for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut builder = f.debug_struct("reqwest::Error");
-
-        builder.field("kind", &self.inner.kind);
-
-        if let Some(ref source) = self.inner.source {
-            builder.field("source", source);
+        Tungstenite(e: tungstenite::Error, t: String) {
+            description("Failed WS")
+            display("{} {}", e, t)
         }
-
-        builder.finish()
     }
-}
-
-
-impl StdError for Error {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        self.inner.source.as_ref().map(|e| &**e as _)
-    }
-}
-
-#[derive(Debug)]
-pub(crate) enum Kind {
-    Text(String),
-    Status(StatusCode),
-}
-
-pub(crate) fn text_error<T: Into<String>>(message: T) -> Error {
-    Error::new(Kind::Text(message.into()), None::<Error>)
-}
-
-pub(crate) fn text_error_with_inner<T: Into<String>, E: Into<BoxError>>(message: T, e: E) -> Error {
-    Error::new(Kind::Text(message.into()), Some(e))
-}
-
-pub(crate) fn status_code(status: StatusCode) -> Error {
-    Error::new(Kind::Status(status), None::<Error>)
-}
-
-pub(crate) fn limited(status: StatusCode, timeout: Option<i64>) -> Error {
-    Error::new(Kind::Status(status), None::<Error>).with_timeout(timeout)
 }

@@ -25,9 +25,15 @@
 //! author is a current developer at Cisco, but has no direct affiliation
 //! with the Webex development team.
 
+#[macro_use]
+extern crate error_chain;
+
 pub mod adaptive_card;
 pub mod types;
-mod error;
+#[allow(missing_docs)]
+pub mod error;
+
+use error::{Error, ErrorKind};
 
 use futures::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
@@ -41,9 +47,9 @@ use tokio_tungstenite::stream::Stream;
 use tokio_tungstenite::{connect_async, WebSocketStream};
 use tungstenite::protocol::Message;
 use uuid::Uuid;
-use crate::error::{Error, status_code, text_error, text_error_with_inner, limited};
 use crate::adaptive_card::AdaptiveCard;
 use crate::types::Attachment;
+use tungstenite;
 
 /*
  * URLs:
@@ -69,7 +75,7 @@ pub struct Webex {
     token: String,
     host_prefix: HashMap<String, String>,
     /// Webex Device Information used for device registration
-    pub device: types::DeviceData
+    pub device: types::DeviceData,
 }
 
 /// Webex Event Stream handler
@@ -82,12 +88,12 @@ impl WebexEventStream {
     /// Get the next event from an event stream
     ///
     /// Returns an event or an error
-    pub async fn next(&mut self) -> Result<types::Event, String> {
+    pub async fn next(&mut self) -> Result<types::Event, Error> {
         loop {
             let next = self.ws_stream.next();
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
-                Err(_) => return Err(format!("no activity for at least {:?}", self.timeout)),
+                Err(_) => return Err(format!("no activity for at least {:?}", self.timeout).into()),
                 // Didn't time out
                 Ok(next_result) => match next_result {
                     Some(msg) => match msg {
@@ -104,7 +110,7 @@ impl WebexEventStream {
                                 Err(e) => return Err(e),
                             };
                         }
-                        Err(e) => return Err(e.to_string()),
+                        Err(e) => return Err(e.to_string().into()),
                     },
                     None => continue,
                 },
@@ -112,21 +118,20 @@ impl WebexEventStream {
         }
     }
 
-    async fn handle_message(&self, msg: Message) -> Result<Option<types::Event>, String> {
+    async fn handle_message(&self, msg: Message) -> Result<Option<types::Event>, Error> {
         match msg {
             Message::Binary(bytes) => match String::from_utf8(bytes) {
                 Ok(json) => {
                     let json = json.as_str();
-                    let event: Result<types::Event, _> = serde_json::from_str(json);
-                    match event {
-                        Ok(event) => Ok(Some(event)),
+                    match serde_json::from_str(json) {
+                        Ok(ev) => Ok(Some(ev)),
                         Err(e) => {
                             warn!("Couldn't deserialize: {:?}.  Original JSON:\n{}", e, &json);
-                            Err(format!("unable to deserialize: {}", e))
+                            Err(e.into())
                         }
                     }
                 }
-                Err(e) => Err(format!("UTF-8 decode failed: {}", e)),
+                Err(e) => Err(e.into()),
             },
             Message::Text(t) => {
                 debug!("text: {}", t);
@@ -168,7 +173,7 @@ impl Webex {
                 system_name: Some("rust-spark-client".to_string()),
                 system_version: Some("0.1".to_string()),
                 ..Default::default()
-            }
+            },
         };
 
         webex
@@ -182,7 +187,7 @@ impl Webex {
     pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
         let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
             Ok(d) => { d }
-            Err(e) => { return Err(text_error_with_inner("Failed to get devices".to_string(), e)); }
+            Err(e) => { return Err(e.into()); }
         };
 
         devices.sort_by(|a: &types::DeviceData, b: &types::DeviceData| b.modification_time.unwrap_or(chrono::Utc::now()).cmp(&a.modification_time.unwrap_or(chrono::Utc::now())));
@@ -221,19 +226,19 @@ impl Webex {
             Ok(d) => {
                 match d.ws_url {
                     Some(url) => url.clone(),
-                    None => return Err(text_error("Registered device has no ws url"))
+                    None => return Err("Registered device has no ws url".into())
                 }
             }
-            Err(e) => { return Err(text_error_with_inner("Failed to setup device: ", e)); }
+            Err(e) => { return Err(format!("Failed to setup device: {}", e).into()); }
         };
 
         let url = url::Url::parse(ws_url.as_str())
-            .map_err(|e| text_error_with_inner(format!("Unable to parse WS URL: {}", e), e))?;
+            .map_err(|e| Into::<Error>::into(format!("Unable to parse WS URL {}", e)))?;
         debug!("Connecting to {:?}", url);
 
         let (mut ws_stream, _response) = connect_async(url.clone())
             .await
-            .map_err(|e| text_error_with_inner(format!("connecting to {}: {}", url, e), e))?;
+            .map_err(|e| Into::<Error>::into(format!("connecting to {}, {}", url, e)))?;
         debug!("Connected to {}", url);
         self.ws_auth(&mut ws_stream).await?;
 
@@ -270,7 +275,7 @@ impl Webex {
     pub async fn get_rooms(&self) -> Result<Vec<types::Room>, Error> {
         let rooms_reply: Result<types::RoomsReply, _> = self.api_get("rooms").await;
         match rooms_reply {
-            Err(e) => Err(e.with_prefix("rooms failed: ")),
+            Err(e) => Err(Error::with_chain(e, "rooms failed: ")),
             Ok(rr) => Ok(rr.items),
         }
     }
@@ -280,7 +285,7 @@ impl Webex {
         let rest_method = format!("people/{}", id);
         let people_reply: Result<types::Person, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
-            Err(e) => Err(e.with_prefix("people failed: ")),
+            Err(e) => Err(Error::with_chain(e, "people failed: ")),
             Ok(pr) => Ok(pr),
         }
     }
@@ -290,7 +295,7 @@ impl Webex {
         let rest_method = format!("attachment/actions/{}", id);
         let people_reply: Result<types::Action, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
-            Err(e) => Err(e.with_prefix("action failed: ")),
+            Err(e) => Err(Error::with_chain(e, "action failed: ")),
             Ok(pr) => Ok(pr),
         }
     }
@@ -340,7 +345,7 @@ impl Webex {
                     Err(e) => {
                         debug!("Couldn't parse reply for {} call: {}", rest_method, e);
                         debug!("Source JSON: {}", reply);
-                        Err(text_error_with_inner(format!("failed to parse reply: {}", e), e))
+                        Err(Error::with_chain(e, "failed to parse reply"))
                     }
                 }
             }
@@ -374,7 +379,7 @@ impl Webex {
             Ok(mut resp) => {
                 if !resp.status().is_success() {
                     if resp.status() == hyper::StatusCode::LOCKED || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS {
-                        return Err(limited(resp.status(), match resp.headers().get("Retry-After") {
+                        return Err(ErrorKind::Limited(resp.status(), match resp.headers().get("Retry-After") {
                             None => { None }
                             Some(timeout) => {
                                 match timeout.to_str() {
@@ -390,9 +395,9 @@ impl Webex {
                                     }
                                 }
                             }
-                        }));
+                        }).into());
                     }
-                    return Err(status_code(resp.status()));
+                    return Err(ErrorKind::Status(resp.status()).into());
                 }
                 let mut reply = String::new();
                 while let Some(chunk) = resp.body_mut().data().await {
@@ -404,7 +409,7 @@ impl Webex {
                 }
                 Ok(reply)
             }
-            Err(e) => Err(text_error_with_inner(format!("request failed: {}", e), e)),
+            Err(e) => { Err(Error::with_chain(e, "request failed")) }
         }
     }
 
@@ -422,14 +427,24 @@ impl Webex {
                 }
             },
             Err(e) => {
-                if e.status() == Some(hyper::StatusCode::NOT_FOUND) {
-                    debug!("No devices found, creating new one");
-                    match self.setup_devices().await {
-                        Ok(device) => { Ok(vec![device]) }
-                        Err(e) => { Err(e) }
+                match e {
+                    Error(ErrorKind::Status(s), _) => {
+                        if s == hyper::StatusCode::NOT_FOUND {
+                            debug!("No devices found, creating new one");
+                            match self.setup_devices().await {
+                                Ok(device) => { Ok(vec![device]) }
+                                Err(e) => { Err(e) }
+                            }
+                        } else {
+                            Err(Error::with_chain(e, "Can't decode devices reply"))
+                        }
                     }
-                } else {
-                    Err(e.with_prefix("Can't decode devices reply: "))
+                    Error(ErrorKind::Limited(_, t), _) => {
+                        Err(Error::with_chain(e, format!("We are hitting the API limit, retry after: {:?}", t)))
+                    }
+                    _ => {
+                        Err(format!("Can't decode devices reply: {}", e).into())
+                    }
                 }
             }
         }
@@ -451,26 +466,29 @@ impl Webex {
             },
         };
         debug!("Authenticating to stream");
-        ws_stream
+        match ws_stream
             .send(Message::Text(serde_json::to_string(&auth).unwrap()))
-            .await
-            .map_err(|e| text_error(format!("failed to send authentication: {}", e)))?;
-
-        /*
-         * The next thing back should be a pong
-         */
-        match ws_stream.next().await {
-            Some(msg) => match msg {
-                Ok(msg) => match msg {
-                    Message::Pong(_) => {
-                        debug!("Authentication succeeded");
-                        Ok(())
-                    }
-                    _ => Err(text_error(format!("Received {:?} in reply to auth message", msg))),
-                },
-                Err(e) => Err(text_error(format!("Received error from websocket: {}", e))),
-            },
-            None => Err(text_error("Websocket closed".to_string())),
+            .await {
+            Ok(_) => {
+                /*
+                 * The next thing back should be a pong
+                 */
+                match ws_stream.next().await {
+                    Some(msg) => match msg {
+                        Ok(msg) => match msg {
+                            Message::Pong(_) => {
+                                debug!("Authentication succeeded");
+                                Ok(())
+                            }
+                            _ => Err(format!("Received {:?} in reply to auth message", msg).into()),
+                        },
+                        Err(e) => Err(format!("Received error from websocket: {}", e).into()),
+                    },
+                    None => Err("Websocket closed".to_string().into()),
+                }
+            }
+            Err(e) => Err(
+                ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
         }
     }
 }
