@@ -14,6 +14,11 @@ error_chain! {
             display("HTTP Status: '{}'", s)
         }
 
+        StatusText(s: StatusCode, m: String) {
+            description("HTTP Status Code")
+            display("HTTP Status: '{}' Message: {}", s, m)
+        }
+
         Limited(s: StatusCode, t: Option<i64>) {
             description("Reached API Limits")
             display("{} Retry in: '{:?}'", s, t)

@@ -18,19 +18,22 @@ pub struct AdaptiveCard {
     /// Maximum version is 1.1
     pub version: String,
     /// The card elements to show in the primary card region.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<Vec<CardElement>>,
     /// Actions available for this card
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub actions: Option<Vec<Action>>,
     /// An Action that will be invoked when the card is tapped or selected.
-    #[serde(rename = "selectAction")]
+    #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
     pub select_action: Option<Box<Action>>,
     /// Text shown when the client doesn’t support the version specified (may contain markdown).
-    #[serde(rename = "fallbackText")]
+    #[serde(rename = "fallbackText", skip_serializing_if = "Option::is_none")]
     pub fallback_text: Option<String>,
     /// Specifies the minimum height of the card.
-    #[serde(rename = "minHeight")]
+    #[serde(rename = "minHeight", skip_serializing_if = "Option::is_none")]
     pub min_height: Option<String>,
     /// The 2-letter ISO-639-1 language used in the card. Used to localize any date/time functions.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
     /// The Adaptive Card schema.
     /// http://adaptivecards.io/schemas/adaptive-card.json
@@ -108,20 +111,25 @@ pub enum CardElement {
         /// The card elements to render inside the Container.
         items: Vec<CardElement>,
         /// An Action that will be invoked when the Container is tapped or selected.
-        #[serde(rename = "selectAction")]
+        #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
         select_action: Option<Action>,
         /// Style hint for Container.
+        #[serde(skip_serializing_if = "Option::is_none")]
         style: Option<ContainerStyle>,
         /// Defines how the content should be aligned vertically within the container.
-        #[serde(rename = "verticalContentAlignment")]
+        #[serde(rename = "verticalContentAlignment", skip_serializing_if = "Option::is_none")]
         vertical_content_alignment: Option<VerticalContentAlignment>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// A unique identifier associated with the item.
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -130,15 +138,16 @@ pub enum CardElement {
         /// The array of Columns to divide the region into.
         columns: Vec<Column>,
         /// An Action that will be invoked when the ColumnSet is tapped or selected.
-        #[serde(rename = "selectAction")]
+        #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
         select_action: Option<Action>,
-        /// Specifies the height of the element.
-        height: Option<Height>,
         /// A unique identifier associated with the item.
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -147,12 +156,16 @@ pub enum CardElement {
         /// 	The array of Fact‘s.
         facts: Vec<Fact>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// A unique identifier associated with the item.
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -161,15 +174,19 @@ pub enum CardElement {
         /// The array of Image elements to show.
         images: Vec<CardElement>,
         /// Controls the approximate size of each image. The physical dimensions will vary per host.
-        #[serde(rename = "imageSize")]
+        #[serde(rename = "imageSize", skip_serializing_if = "Option::is_none")]
         image_size: Option<ImageSize>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// A unique identifier associated with the item.
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -178,32 +195,40 @@ pub enum CardElement {
         /// Text to display
         text: String,
         /// If true, allow text to wrap. Otherwise, text is clipped.
+        #[serde(skip_serializing_if = "Option::is_none")]
         wrap: Option<bool>,
         /// Controls the color of TextBlock elements.
+        #[serde(skip_serializing_if = "Option::is_none")]
         color: Option<Color>,
         /// Controls the horizontal text alignment.
-        #[serde(rename = "HorizontalAlignment")]
+        #[serde(rename = "HorizontalAlignment", skip_serializing_if = "Option::is_none")]
         horizontal_alignment: Option<HorizontalAlignment>,
         /// If true, displays text slightly toned down to appear less prominent.
-        #[serde(rename = "isSubtle")]
+        #[serde(rename = "isSubtle", skip_serializing_if = "Option::is_none")]
         is_subtle: Option<bool>,
         /// Specifies the maximum number of lines to display.
-        #[serde(rename = "maxLines")]
+        #[serde(rename = "maxLines", skip_serializing_if = "Option::is_none")]
         max_lines: Option<u64>,
         /// Specifies the font type
-        #[serde(rename = "fontType")]
+        #[serde(rename = "fontType", skip_serializing_if = "Option::is_none")]
         font_type: Option<FontType>,
         /// Controls size of text.
+        #[serde(skip_serializing_if = "Option::is_none")]
         size: Option<Size>,
         /// Controls the weight of TextBlock elements.
+        #[serde(skip_serializing_if = "Option::is_none")]
         weight: Option<Weight>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// A unique identifier associated with the item.
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -212,31 +237,38 @@ pub enum CardElement {
         /// The URL to the image.
         url: String,
         /// Alternate text describing the image.
-        #[serde(rename = "altText")]
+        #[serde(rename = "altText", skip_serializing_if = "Option::is_none")]
         alt_text: Option<String>,
         /// Applies a background to a transparent image. This property will respect the image style.
         /// hex value of a color (e.g. #982374)
-        #[serde(rename = "backgroundColor")]
+        #[serde(rename = "backgroundColor", skip_serializing_if = "Option::is_none")]
         background_color: Option<String>,
         /// The desired on-screen width of the image, ending in ‘px’. E.g., 50px. This overrides the size property.
+        #[serde(skip_serializing_if = "Option::is_none")]
         width: Option<String>,
         /// The desired height of the image. If specified as a pixel value, ending in ‘px’, E.g., 50px, the image will distort to fit that exact height. This overrides the size property.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<String>,
         /// Controls how this element is horizontally positioned within its parent.
-        #[serde(rename = "horizontalAlignment")]
+        #[serde(rename = "horizontalAlignment", skip_serializing_if = "Option::is_none")]
         horizontal_alignment: Option<HorizontalAlignment>,
         /// An Action that will be invoked when the Image is tapped or selected. Action.ShowCard is not supported.
-        #[serde(rename = "selectAction")]
+        #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
         select_action: Option<Action>,
         /// Controls the approximate size of the image. The physical dimensions will vary per host.
+        #[serde(skip_serializing_if = "Option::is_none")]
         size: Option<ImageSize>,
         /// Controls how this Image is displayed.
+        #[serde(skip_serializing_if = "Option::is_none")]
         style: Option<ImageStyle>,
         /// A unique identifier associated with the item.
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -246,25 +278,31 @@ pub enum CardElement {
         /// Unique identifier for the value. Used to identify collected input when the Submit action is performed.
         id: String,
         /// Description of the input desired. Displayed when no text has been input.
+        #[serde(skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
         /// If true, allow multiple lines of input.
-        #[serde(rename = "isMultiline")]
+        #[serde(rename = "isMultiline", skip_serializing_if = "Option::is_none")]
         is_multiline: Option<bool>,
         /// Hint of maximum length characters to collect (may be ignored by some clients).
-        #[serde(rename = "maxLength")]
+        #[serde(rename = "maxLength", skip_serializing_if = "Option::is_none")]
         max_length: Option<u64>,
         /// Text Input Style
+        #[serde(skip_serializing_if = "Option::is_none")]
         style: Option<TextInputStyle>,
         /// The inline action for the input. Typically displayed to the right of the input.
-        #[serde(rename = "inlineAction")]
+        #[serde(rename = "inlineAction", skip_serializing_if = "Option::is_none")]
         inline_action: Option<Action>,
         /// The initial value for this field.
+        #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<String>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -274,18 +312,25 @@ pub enum CardElement {
         /// Unique identifier for the value. Used to identify collected input when the Submit action is performed.
         id: String,
         /// Description of the input desired. Displayed when no selection has been made.
+        #[serde(skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
         /// Hint of maximum value (may be ignored by some clients).
+        #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<f64>,
         /// Hint of minimum value (may be ignored by some clients).
+        #[serde(skip_serializing_if = "Option::is_none")]
         min: Option<f64>,
         /// Initial value for this field.
+        #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<f64>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -295,18 +340,25 @@ pub enum CardElement {
         /// Unique identifier for the value. Used to identify collected input when the Submit action is performed.
         id: String,
         /// Description of the input desired. Displayed when no selection has been made.
+        #[serde(skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
         /// Hint of maximum value expressed in YYYY-MM-DD(may be ignored by some clients).
+        #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<String>,
         /// Hint of minimum value expressed in YYYY-MM-DD(may be ignored by some clients).
+        #[serde(skip_serializing_if = "Option::is_none")]
         min: Option<String>,
         /// The initial value for this field expressed in YYYY-MM-DD.
+        #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<String>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -316,16 +368,22 @@ pub enum CardElement {
         /// Unique identifier for the value. Used to identify collected input when the Submit action is performed.
         id: String,
         /// Hint of maximum value expressed in HH:MM (may be ignored by some clients).
+        #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<String>,
         /// Hint of minimum value expressed in HH:MM (may be ignored by some clients).
+        #[serde(skip_serializing_if = "Option::is_none")]
         min: Option<String>,
         /// The initial value for this field expressed in HH:MM.
+        #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<String>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -335,18 +393,22 @@ pub enum CardElement {
         /// Unique identifier for the value. Used to identify collected input when the Submit action is performed.
         id: String,
         /// The initial selected value. If you want the toggle to be initially on, set this to the value of valueOn‘s value.
+        #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<String>,
         /// The value when toggle is off
-        #[serde(rename = "valueOff")]
+        #[serde(rename = "valueOff", skip_serializing_if = "Option::is_none")]
         value_off: Option<String>,
         /// The value when toggle is on
-        #[serde(rename = "valueOn")]
+        #[serde(rename = "valueOn", skip_serializing_if = "Option::is_none")]
         value_on: Option<String>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -358,17 +420,22 @@ pub enum CardElement {
         /// Unique identifier for the value. Used to identify collected input when the Submit action is performed.
         id: String,
         /// Allow multiple choices to be selected.
-        #[serde(rename = "isMultiSelect")]
+        #[serde(rename = "isMultiSelect", skip_serializing_if = "Option::is_none")]
         is_multi_select: Option<bool>,
         /// Input Choice Style
+        #[serde(skip_serializing_if = "Option::is_none")]
         style: Option<ChoiceInputStyle>,
         /// The initial choice (or set of choices) that should be selected. For multi-select, specify a comma-separated string of values.
+        #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<String>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
         /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
         /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
     },
 
@@ -377,6 +444,7 @@ pub enum CardElement {
         /// The array of Action elements to show.
         actions: Vec<Action>,
         /// Specifies the height of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
     },
 }
@@ -446,7 +514,7 @@ impl CardElement {
     /// Set Text Input Multiline
     pub fn set_multiline(&mut self, s: bool) -> Self {
         if let CardElement::InputText {
-            id:_, placeholder:_, is_multiline, max_length:_, style:_, inline_action:_, value:_, height:_, separator:_, spacing:_
+            id: _, placeholder: _, is_multiline, max_length: _, style: _, inline_action: _, value: _, height: _, separator: _, spacing: _
         } = self { *is_multiline = Some(s); }
         self.into()
     }
@@ -613,7 +681,6 @@ impl CardElement {
         CardElement::ColumnSet {
             columns: vec![],
             select_action: None,
-            height: None,
             id: None,
             separator: None,
             spacing: None,
@@ -624,7 +691,7 @@ impl CardElement {
     pub fn add_column(&mut self, column: Column) -> Self {
         match self {
             CardElement::ColumnSet {
-                columns, select_action: _, height: _, id: _, separator: _, spacing: _
+                columns, select_action: _, id: _, separator: _, spacing: _
             } => { columns.push(column) }
             _ => {}
         }
@@ -640,7 +707,7 @@ impl CardElement {
             CardElement::FactSet {
                 facts: _, height: _, id: _, separator, spacing: _, } => { *separator = Some(s); }
             CardElement::ColumnSet {
-                columns: _, select_action: _, height: _, id: _, separator, spacing: _
+                columns: _, select_action: _, id: _, separator, spacing: _
             } => { *separator = Some(s); }
             CardElement::Image {
                 url: _, alt_text: _, background_color: _, width: _, height: _, horizontal_alignment: _, select_action: _, size: _, style: _, id: _, separator, spacing: _
@@ -666,7 +733,7 @@ impl CardElement {
                 facts: _, height: _, id: _, separator: _, spacing,
             } => { *spacing = Some(s); }
             CardElement::ColumnSet {
-                columns: _, select_action: _, height: _, id: _, separator: _, spacing
+                columns: _, select_action: _, id: _, separator: _, spacing
             } => { *spacing = Some(s); }
             CardElement::Image {
                 url: _, alt_text: _, background_color: _, width: _, height: _, horizontal_alignment: _, select_action: _, size: _, style: _, id: _, separator: _, spacing
@@ -708,20 +775,25 @@ pub struct Column {
     /// The card elements to render inside the Column.
     items: Vec<CardElement>,
     /// An Action that will be invoked when the Column is tapped or selected.
-    #[serde(rename = "selectAction")]
+    #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
     select_action: Option<Action>,
     /// Style hint for Column.
+    #[serde(skip_serializing_if = "Option::is_none")]
     style: Option<ContainerStyle>,
     /// Defines how the content should be aligned vertically within the column.
-    #[serde(rename = "verticalContentAlignment")]
+    #[serde(rename = "verticalContentAlignment", skip_serializing_if = "Option::is_none")]
     vertical_content_alignment: Option<VerticalContentAlignment>,
     /// When true, draw a separating line between this column and the previous column.
+    #[serde(skip_serializing_if = "Option::is_none")]
     separator: Option<bool>,
     /// Controls the amount of spacing between this column and the preceding column.
+    #[serde(skip_serializing_if = "Option::is_none")]
     spacing: Option<Spacing>,
     /// "auto", "stretch", a number representing relative width of the column in the column group, or in version 1.1 and higher, a specific pixel width, like "50px".
+    #[serde(skip_serializing_if = "Option::is_none")]
     width: Option<String>,
     /// A unique identifier associated with the item.
+    #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<String>,
 }
 
@@ -923,10 +995,13 @@ pub enum Action {
     #[serde(rename = "Action.Submit")]
     Submit {
         /// Initial data that input fields will be combined with. These are essentially ‘hidden’ properties.
+        #[serde(skip_serializing_if = "Option::is_none")]
         data: Option<HashMap<String, String>>,
         /// Label for button or link that represents this action.
+        #[serde(skip_serializing_if = "Option::is_none")]
         title: Option<String>,
         /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
+        #[serde(skip_serializing_if = "Option::is_none")]
         style: Option<ActionStyle>,
     },
     /// When invoked, show the given url either by launching it in an external web browser or showing within an embedded web browser.
@@ -935,8 +1010,10 @@ pub enum Action {
         /// The URL to open.
         url: String,
         /// Label for button or link that represents this action.
+        #[serde(skip_serializing_if = "Option::is_none")]
         title: Option<String>,
         /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
+        #[serde(skip_serializing_if = "Option::is_none")]
         style: Option<ActionStyle>,
     },
     /// Defines an AdaptiveCard which is shown to the user when the button or link is clicked.
@@ -945,8 +1022,10 @@ pub enum Action {
         /// The Adaptive Card to show.
         card: AdaptiveCard,
         /// Label for button or link that represents this action.
+        #[serde(skip_serializing_if = "Option::is_none")]
         title: Option<String>,
         /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
+        #[serde(skip_serializing_if = "Option::is_none")]
         style: Option<ActionStyle>,
     },
 }

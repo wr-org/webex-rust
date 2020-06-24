@@ -266,7 +266,7 @@ impl Webex {
     }
 
     /// Delete a message by ID
-    pub async fn delete_message(&self, id: &str) -> Result<types::EmptyReply, Error> {
+    pub async fn delete_message(&self, id: &str) -> Result<(), Error> {
         let rest_method = format!("messages/{}", id);
         self.api_delete(rest_method.as_str()).await
     }
@@ -397,7 +397,15 @@ impl Webex {
                             }
                         }).into());
                     }
-                    return Err(ErrorKind::Status(resp.status()).into());
+                    let mut reply = String::new();
+                    while let Some(chunk) = resp.body_mut().data().await {
+                        use std::str;
+
+                        let chunk = chunk.unwrap();
+                        let strchunk = str::from_utf8(&chunk).unwrap();
+                        reply.push_str(&strchunk);
+                    }
+                    return Err(ErrorKind::StatusText(resp.status(), reply).into());
                 }
                 let mut reply = String::new();
                 while let Some(chunk) = resp.body_mut().data().await {
