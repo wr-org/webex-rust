@@ -280,6 +280,16 @@ impl Webex {
         }
     }
 
+    /// Get available room
+    pub async fn get_room(&self, id: &str) -> Result<types::Room, Error> {
+        let rest_method = format!("rooms/{}", id);
+        let room_reply: Result<types::Room, _> = self.api_get(rest_method.as_str()).await;
+        match room_reply {
+            Err(e) => Err(Error::with_chain(e, "room failed: ")),
+            Ok(rr) => Ok(rr),
+        }
+    }
+
     /// Get information about person
     pub async fn get_person(&self, id: &str) -> Result<types::Person, Error> {
         let rest_method = format!("people/{}", id);
