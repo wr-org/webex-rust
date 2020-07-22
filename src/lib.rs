@@ -143,7 +143,7 @@ impl WebexEventStream {
             }
             Message::Close(t) => {
                 debug!("close: {:?}", t);
-                Ok(None)
+                Err(ErrorKind::Closed("Web Socket Closed".to_string()).into())
             }
             Message::Pong(_) => {
                 debug!("Pong!");
@@ -187,7 +187,16 @@ impl Webex {
     pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
         let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
             Ok(d) => { d }
-            Err(e) => { return Err(e.into()); }
+            Err(e) => {
+                match self.setup_devices().await {
+                    Ok(_) => {}
+                    Err(e) => { return Err(e.into()); }
+                };
+                match self.get_devices().await {
+                    Ok(d) => { d }
+                    Err(e) => { return Err(e.into()); }
+                }
+            }
         };
 
         devices.sort_by(|a: &types::DeviceData, b: &types::DeviceData| b.modification_time.unwrap_or(chrono::Utc::now()).cmp(&a.modification_time.unwrap_or(chrono::Utc::now())));
