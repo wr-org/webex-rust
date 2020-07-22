@@ -410,6 +410,9 @@ pub enum CardElement {
         /// Controls the amount of spacing between this element and the preceding element.
         #[serde(skip_serializing_if = "Option::is_none")]
         spacing: Option<Spacing>,
+        /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
     },
 
     /// Allows a user to input a Choice.
@@ -543,6 +546,7 @@ impl CardElement {
             height: None,
             separator: None,
             spacing: None,
+            title: None
         }
     }
 
@@ -551,6 +555,14 @@ impl CardElement {
         if let CardElement::InputChoiceSet {
             choices: _, id: _, is_multi_select: _, style, value: _, height: _, separator: _, spacing: _
         } = self { *style = Some(s); }
+        self.into()
+    }
+
+    /// Set title Style
+    pub fn set_title(&mut self, s: String) -> Self {
+        if let CardElement::InputToggle {
+            id: _id, value: _value, value_off: _value_off, value_on: _value_on, height: _height, separator: _separator, spacing: _spacing, title
+        } = self { *title = Some(s); }
         self.into()
     }
 
@@ -718,6 +730,7 @@ impl CardElement {
             CardElement::InputText {
                 id: _, placeholder: _, is_multiline: _, max_length: _, style: _, inline_action: _, value: _, height: _, separator, spacing: _
             } => { *separator = Some(s); }
+            CardElement::InputToggle { id: _id, value: _value, value_off: _value_off, value_on: _value_on, height: _height, separator, spacing: _spacing, title: _title } => { *separator = Some(s); }
             _ => {}
         }
         self.into()
