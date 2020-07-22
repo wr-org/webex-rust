@@ -82,7 +82,8 @@ pub struct Webex {
 pub struct WebexEventStream {
     ws_stream: WStream,
     timeout: Duration,
-    is_open: bool,
+    /// Signifies if WebStream is Open
+    pub is_open: bool,
 }
 
 impl WebexEventStream {
