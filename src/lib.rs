@@ -82,6 +82,7 @@ pub struct Webex {
 pub struct WebexEventStream {
     ws_stream: WStream,
     timeout: Duration,
+    is_open: bool,
 }
 
 impl WebexEventStream {
@@ -118,7 +119,7 @@ impl WebexEventStream {
         }
     }
 
-    async fn handle_message(&self, msg: Message) -> Result<Option<types::Event>, Error> {
+    async fn handle_message(&mut self, msg: Message) -> Result<Option<types::Event>, Error> {
         match msg {
             Message::Binary(bytes) => match String::from_utf8(bytes) {
                 Ok(json) => {
@@ -143,6 +144,7 @@ impl WebexEventStream {
             }
             Message::Close(t) => {
                 debug!("close: {:?}", t);
+                self.is_open = false;
                 Err(ErrorKind::Closed("Web Socket Closed".to_string()).into())
             }
             Message::Pong(_) => {
@@ -188,6 +190,7 @@ impl Webex {
         let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
             Ok(d) => { d }
             Err(e) => {
+                warn!("Failed to get devices {}", e);
                 match self.setup_devices().await {
                     Ok(_) => {}
                     Err(e) => { return Err(e.into()); }
@@ -218,7 +221,7 @@ impl Webex {
                             self.ws_auth(&mut ws_stream).await?;
 
                             let timeout = Duration::from_secs(20);
-                            return Ok(WebexEventStream { ws_stream, timeout });
+                            return Ok(WebexEventStream { ws_stream, timeout, is_open: true });
                         }
                         Err(e) => {
                             warn!("Failed to connect to {:?}: {:?}", url, e);
@@ -252,7 +255,7 @@ impl Webex {
         self.ws_auth(&mut ws_stream).await?;
 
         let timeout = Duration::from_secs(20);
-        Ok(WebexEventStream { ws_stream, timeout })
+        Ok(WebexEventStream { ws_stream, timeout, is_open: true })
     }
 
     /// Get attachment action
