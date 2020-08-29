@@ -82,6 +82,8 @@ pub struct Webex {
 pub struct WebexEventStream {
     ws_stream: WStream,
     timeout: Duration,
+    /// Signifies if WebStream is Open
+    pub is_open: bool,
 }
 
 impl WebexEventStream {
@@ -118,7 +120,7 @@ impl WebexEventStream {
         }
     }
 
-    async fn handle_message(&self, msg: Message) -> Result<Option<types::Event>, Error> {
+    async fn handle_message(&mut self, msg: Message) -> Result<Option<types::Event>, Error> {
         match msg {
             Message::Binary(bytes) => match String::from_utf8(bytes) {
                 Ok(json) => {
@@ -143,7 +145,8 @@ impl WebexEventStream {
             }
             Message::Close(t) => {
                 debug!("close: {:?}", t);
-                Ok(None)
+                self.is_open = false;
+                Err(ErrorKind::Closed("Web Socket Closed".to_string()).into())
             }
             Message::Pong(_) => {
                 debug!("Pong!");
@@ -187,7 +190,17 @@ impl Webex {
     pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
         let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
             Ok(d) => { d }
-            Err(e) => { return Err(e.into()); }
+            Err(e) => {
+                warn!("Failed to get devices {}", e);
+                match self.setup_devices().await {
+                    Ok(_) => {}
+                    Err(e) => { return Err(e.into()); }
+                };
+                match self.get_devices().await {
+                    Ok(d) => { d }
+                    Err(e) => { return Err(e.into()); }
+                }
+            }
         };
 
         devices.sort_by(|a: &types::DeviceData, b: &types::DeviceData| b.modification_time.unwrap_or(chrono::Utc::now()).cmp(&a.modification_time.unwrap_or(chrono::Utc::now())));
@@ -209,7 +222,7 @@ impl Webex {
                             self.ws_auth(&mut ws_stream).await?;
 
                             let timeout = Duration::from_secs(20);
-                            return Ok(WebexEventStream { ws_stream, timeout });
+                            return Ok(WebexEventStream { ws_stream, timeout, is_open: true });
                         }
                         Err(e) => {
                             warn!("Failed to connect to {:?}: {:?}", url, e);
@@ -243,7 +256,7 @@ impl Webex {
         self.ws_auth(&mut ws_stream).await?;
 
         let timeout = Duration::from_secs(20);
-        Ok(WebexEventStream { ws_stream, timeout })
+        Ok(WebexEventStream { ws_stream, timeout, is_open: true })
     }
 
     /// Get attachment action
@@ -266,7 +279,7 @@ impl Webex {
     }
 
     /// Delete a message by ID
-    pub async fn delete_message(&self, id: &str) -> Result<types::EmptyReply, Error> {
+    pub async fn delete_message(&self, id: &str) -> Result<(), Error> {
         let rest_method = format!("messages/{}", id);
         self.api_delete(rest_method.as_str()).await
     }
@@ -277,6 +290,16 @@ impl Webex {
         match rooms_reply {
             Err(e) => Err(Error::with_chain(e, "rooms failed: ")),
             Ok(rr) => Ok(rr.items),
+        }
+    }
+
+    /// Get available room
+    pub async fn get_room(&self, id: &str) -> Result<types::Room, Error> {
+        let rest_method = format!("rooms/{}", id);
+        let room_reply: Result<types::Room, _> = self.api_get(rest_method.as_str()).await;
+        match room_reply {
+            Err(e) => Err(Error::with_chain(e, "room failed: ")),
+            Ok(rr) => Ok(rr),
         }
     }
 
@@ -397,7 +420,15 @@ impl Webex {
                             }
                         }).into());
                     }
-                    return Err(ErrorKind::Status(resp.status()).into());
+                    let mut reply = String::new();
+                    while let Some(chunk) = resp.body_mut().data().await {
+                        use std::str;
+
+                        let chunk = chunk.unwrap();
+                        let strchunk = str::from_utf8(&chunk).unwrap();
+                        reply.push_str(&strchunk);
+                    }
+                    return Err(ErrorKind::StatusText(resp.status(), reply).into());
                 }
                 let mut reply = String::new();
                 while let Some(chunk) = resp.body_mut().data().await {

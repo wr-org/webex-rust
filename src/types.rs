@@ -22,7 +22,7 @@ pub struct Room {
     #[serde(rename = "isLocked")]
     pub is_locked: bool,
     /// The ID for the team with which this room is associated.
-    #[serde(rename = "teamId")]
+    #[serde(rename = "teamId", skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
     /// The date and time of the room's last activity.
     #[serde(rename = "lastActivity")]
@@ -45,24 +45,28 @@ pub struct RoomsReply {
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MessageOut {
     /// The parent message to reply to.
-    #[serde(rename = "parentId")]
+    #[serde(rename = "parentId", skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
     /// The room ID of the message.
-    #[serde(rename = "roomId")]
+    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonId")]
+    #[serde(rename = "toPersonId", skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonEmail")]
+    #[serde(rename = "toPersonEmail", skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text. The maximum message length is 7439 bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// The message, in Markdown format. The maximum message length is 7439 bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
     /// The public URL to a binary file to be posted into the room. Only one file is allowed per message. Uploaded files are automatically converted into a format that all Webex Teams clients can render. For the supported media types and the behavior of uploads, see the [Message Attachments Guide](https://developer.webex.com/docs/api/basics#message-attachments).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
     /// Content attachments to attach to the message. Only one card per message is supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Attachment>>,
 }
 
@@ -70,45 +74,52 @@ pub struct MessageOut {
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Message {
     /// The unique identifier for the message.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// The room ID of the message.
-    #[serde(rename = "roomId")]
+    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The room type.
     ///
     /// direct - 1:1 room
     /// group - group room
-    #[serde(rename = "roomType")]
+    #[serde(rename = "roomType", skip_serializing_if = "Option::is_none")]
     pub room_type: Option<String>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonId")]
+    #[serde(rename = "toPersonId", skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonEmail")]
+    #[serde(rename = "toPersonEmail", skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// The message, in Markdown format.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
     /// The text content of the message, in HTML format. This read-only property is used by the Webex Teams clients.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
     /// Public URLs for files attached to the message. For the supported media types and the behavior of file uploads, see Message Attachments.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
     /// The person ID of the message author.
-    #[serde(rename = "personId")]
+    #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The email address of the message author.
-    #[serde(rename = "personEmail")]
+    #[serde(rename = "personEmail", skip_serializing_if = "Option::is_none")]
     pub person_email: Option<String>,
     /// People IDs for anyone mentioned in the message.
-    #[serde(rename = "mentionedPeople")]
+    #[serde(rename = "mentionedPeople", skip_serializing_if = "Option::is_none")]
     pub mentioned_people: Option<Vec<String>>,
     /// Group names for the groups mentioned in the message.
-    #[serde(rename = "mentionedGroups")]
+    #[serde(rename = "mentionedGroups", skip_serializing_if = "Option::is_none")]
     pub mentioned_groups: Option<Vec<String>>,
     /// Message content attachments attached to the message.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Attachment>>,
     /// The date and time the message was created.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
 }
 
@@ -134,10 +145,13 @@ pub struct Error {
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
 pub struct DevicesReply {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub devices: Option<Vec<DeviceData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<Error>>,
-    #[serde(rename = "trackingId")]
+    #[serde(rename = "trackingId", skip_serializing_if = "Option::is_none")]
     pub tracking_id: Option<String>,
 }
 
@@ -191,8 +205,11 @@ pub struct DeviceData {
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceFeatures {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub developer: Option<Vec<DeviceFeatureData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub entitlement: Option<Vec<DeviceFeatureData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<Vec<DeviceFeatureData>>,
 }
 
@@ -200,12 +217,17 @@ pub struct DeviceFeatures {
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceFeatureData {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub val: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mutable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_modified: Option<String>,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type_field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted_time: Option<i64>,
 }
 
@@ -292,9 +314,11 @@ pub struct Actor {
 pub struct EventData {
     #[serde(rename = "eventType")]
     pub event_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<Actor>,
-    #[serde(rename = "conversationId")]
+    #[serde(rename = "conversationId", skip_serializing_if = "Option::is_none")]
     pub conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub activity: Option<Activity>,
 }
 
@@ -309,12 +333,13 @@ pub struct Activity {
     pub verb: String,
     pub actor: Actor,
     pub object: Object,
-    pub target: Target,
-    #[serde(rename = "clientTempId")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<Target>,
+    #[serde(rename = "clientTempId", skip_serializing_if = "Option::is_none")]
     pub client_temp_id: Option<String>,
-    #[serde(rename = "encryptionKeyUrl")]
+    #[serde(rename = "encryptionKeyUrl", skip_serializing_if = "Option::is_none")]
     pub encryption_key_url: Option<String>,
-    #[serde(rename = "vectorCounters")]
+    #[serde(rename = "vectorCounters", skip_serializing_if = "Option::is_none")]
     pub vector_counters: Option<VectorCounters>,
 }
 
@@ -343,10 +368,13 @@ pub struct Target {
 pub struct Object {
     #[serde(rename = "objectType")]
     pub object_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    #[serde(rename = "displayName")]
+    #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<MiscItems>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub inputs: Option<String>,
 }
 
@@ -372,8 +400,8 @@ pub struct Event {
     pub timestamp: i64,
     #[serde(rename = "trackingId")]
     pub tracking_id: String,
-    #[serde(rename = "alertType")]
-    pub alert_type: String,
+    #[serde(rename = "alertType", skip_serializing_if = "Option::is_none")]
+    pub alert_type: Option<String>,
     pub headers: HashMap<String, String>,
     #[serde(rename = "sequenceNumber")]
     pub sequence_number: i64,
@@ -479,16 +507,21 @@ pub struct Action {
     /// A unique identifier for the action.
     pub id: String,
     /// The type of action performed.
-    #[serde(rename = "type")]
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type_field: Option<String>,
     /// The parent message the attachment action was performed on.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
     /// The action's inputs.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub inputs: Option<HashMap<String, String>>,
     /// The ID of the person who performed the action.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The ID of the room the action was performed within.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The date and time the action was created.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
 }

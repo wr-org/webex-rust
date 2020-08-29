@@ -9,9 +9,19 @@ error_chain! {
         UTF8(std::string::FromUtf8Error);
     }
     errors {
+        Closed(m: String) {
+            description("Connection was closed")
+            display("The connection was closed: {}", m)
+        }
+
         Status(s: StatusCode) {
             description("HTTP Status Code")
             display("HTTP Status: '{}'", s)
+        }
+
+        StatusText(s: StatusCode, m: String) {
+            description("HTTP Status Code")
+            display("HTTP Status: '{}' Message: {}", s, m)
         }
 
         Limited(s: StatusCode, t: Option<i64>) {
