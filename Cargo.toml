@@ -12,18 +12,33 @@ repository = "https://github.com/shutton/webex-rust.git"
 
 [dependencies]
 async-std = "1.5.0"
+error-chain = "0.12.2"
 futures = "0.3.4"
 futures-util = "0.3.4"
 hyper = "0.13"
 hyper-tls = "0.4.1"
 log = "0.4"
-serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "0.2.16", features = ["time", "stream", "fs", "macros", "uds", "io-util"] }
 tokio-tls = "0.3.0"
-tokio-tungstenite = { version = "0.10.1", features = ["tls"] }
 tungstenite = "0.10.1"
 url = "2.1.1"
-uuid = { version = "0.8", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
-error-chain = "0.12.2"
+
+[dependencies.chrono]
+version = "0.4"
+features = ["serde"]
+
+[dependencies.serde]
+version = "1.0.106"
+features = ["derive"]
+
+[dependencies.tokio]
+version = "0.2.16"
+features = ["time", "stream", "fs", "macros", "uds", "io-util"]
+
+[dependencies.tokio-tungstenite]
+version = "0.10.1"
+features = ["tls"]
+
+[dependencies.uuid]
+version = "0.8"
+features = ["v4"]

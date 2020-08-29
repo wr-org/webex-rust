@@ -20,7 +20,7 @@ support (only a few serializations exist, enough to create a form with a
 # DISCLAIMER
 
 This crate is not maintained by Cisco, and not an official SDK.  The
-author is a current developer at Cisco, but has no direct affiliation
+authors are current developers at Cisco, but have no direct affiliation
 with the Webex development team.
 
 ## License
