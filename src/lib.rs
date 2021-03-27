@@ -112,6 +112,11 @@ impl WebexEventStream {
                                 Err(e) => return Err(e),
                             };
                         }
+			Err(tungstenite::error::Error::Protocol(e)) => {
+                            // Protocol error probably requires a connection reset
+                            self.is_open = false;
+                            return Err(e.to_string().into());
+                        }
                         Err(e) => return Err(e.to_string().into()),
                     },
                     None => continue,
