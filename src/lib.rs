@@ -38,7 +38,7 @@ use error::{Error, ErrorKind};
 use futures::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use log::{debug, warn};
+use log::{trace, debug, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::net::TcpStream;
@@ -145,7 +145,7 @@ impl WebexEventStream {
                 Ok(None)
             }
             Message::Ping(_) => {
-                debug!("Ping!");
+                trace!("Ping!");
                 Ok(None)
             }
             Message::Close(t) => {
