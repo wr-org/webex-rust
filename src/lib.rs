@@ -193,13 +193,13 @@ impl Webex {
                 match self.setup_devices().await {
                     Ok(_) => {}
                     Err(e) => {
-                        return Err(e.into());
+                        return Err(e);
                     }
                 };
                 match self.get_devices().await {
                     Ok(d) => d,
                     Err(e) => {
-                        return Err(e.into());
+                        return Err(e);
                     }
                 }
             }
@@ -207,40 +207,37 @@ impl Webex {
 
         devices.sort_by(|a: &types::DeviceData, b: &types::DeviceData| {
             b.modification_time
-                .unwrap_or(chrono::Utc::now())
-                .cmp(&a.modification_time.unwrap_or(chrono::Utc::now()))
+                .unwrap_or_else(chrono::Utc::now)
+                .cmp(&a.modification_time.unwrap_or_else(chrono::Utc::now))
         });
 
         for device in devices {
-            match device.ws_url {
-                Some(ws_url) => {
-                    let url = match url::Url::parse(ws_url.as_str()) {
-                        Ok(u) => u,
-                        Err(e) => {
-                            warn!("Failed to parse {:?}", e);
-                            continue;
-                        }
-                    };
-                    debug!("Connecting to {:?}", url);
-                    match connect_async(url.clone()).await {
-                        Ok((mut ws_stream, _response)) => {
-                            debug!("Connected to {}", url);
-                            self.ws_auth(&mut ws_stream).await?;
+            if let Some(ws_url) = device.ws_url {
+                let url = match url::Url::parse(ws_url.as_str()) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        warn!("Failed to parse {:?}", e);
+                        continue;
+                    }
+                };
+                debug!("Connecting to {:?}", url);
+                match connect_async(url.clone()).await {
+                    Ok((mut ws_stream, _response)) => {
+                        debug!("Connected to {}", url);
+                        self.ws_auth(&mut ws_stream).await?;
 
-                            let timeout = Duration::from_secs(20);
-                            return Ok(WebexEventStream {
-                                ws_stream,
-                                timeout,
-                                is_open: true,
-                            });
-                        }
-                        Err(e) => {
-                            warn!("Failed to connect to {:?}: {:?}", url, e);
-                            continue;
-                        }
-                    };
-                }
-                None => {}
+                        let timeout = Duration::from_secs(20);
+                        return Ok(WebexEventStream {
+                            ws_stream,
+                            timeout,
+                            is_open: true,
+                        });
+                    }
+                    Err(e) => {
+                        warn!("Failed to connect to {:?}: {:?}", url, e);
+                        continue;
+                    }
+                };
             }
         }
 
@@ -265,16 +262,14 @@ impl Webex {
                 self.ws_auth(&mut ws_stream).await?;
 
                 let timeout = Duration::from_secs(20);
-                return Ok(WebexEventStream {
+                Ok(WebexEventStream {
                     ws_stream,
                     timeout,
                     is_open: true,
-                });
+                })
             }
-            Err(e) => {
-                return Err(Into::<Error>::into(format!("connecting to {}, {}", url, e)));
-            }
-        };
+            Err(e) => Err(Into::<Error>::into(format!("connecting to {}, {}", url, e))),
+        }
     }
 
     /// Get attachment action
@@ -443,7 +438,7 @@ impl Webex {
 
                         let chunk = chunk.unwrap();
                         let strchunk = str::from_utf8(&chunk).unwrap();
-                        reply.push_str(&strchunk);
+                        reply.push_str(strchunk);
                     }
                     return Err(ErrorKind::StatusText(resp.status(), reply).into());
                 }
@@ -453,7 +448,7 @@ impl Webex {
 
                     let chunk = chunk.unwrap();
                     let strchunk = str::from_utf8(&chunk).unwrap();
-                    reply.push_str(&strchunk);
+                    reply.push_str(strchunk);
                 }
                 Ok(reply)
             }
@@ -545,11 +540,10 @@ impl Webex {
 
 impl From<&types::Action> for types::MessageOut {
     fn from(action: &types::Action) -> Self {
-        let mut new_msg: Self = Default::default();
-
-        new_msg.room_id = action.room_id.clone();
-
-        new_msg
+        types::MessageOut {
+            room_id: action.room_id.clone(),
+            ..Default::default()
+        }
     }
 }
 

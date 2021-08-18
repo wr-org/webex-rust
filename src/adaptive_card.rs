@@ -160,7 +160,7 @@ pub enum CardElement {
 
     /// The FactSet element displays a series of facts (i.e. name/value pairs) in a tabular form.
     FactSet {
-        /// 	The array of Fact‘s.
+        /// The array of Fact‘s.
         facts: Vec<Fact>,
         /// Specifies the height of the element.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -495,18 +495,18 @@ impl CardElement {
 
     /// Add element to Container
     pub fn add_element<T: Into<CardElement>>(&mut self, element: T) -> Self {
-        match self {
-            CardElement::Container {
-                items,
-                select_action: _,
-                style: _,
-                vertical_content_alignment: _,
-                height: _,
-                id: _,
-                separator: _,
-                spacing: _,
-            } => items.push(element.into()),
-            _ => {}
+        if let CardElement::Container {
+            items,
+            select_action: _,
+            style: _,
+            vertical_content_alignment: _,
+            height: _,
+            id: _,
+            separator: _,
+            spacing: _,
+        } = self
+        {
+            items.push(element.into())
         }
         self.into()
     }
@@ -880,15 +880,15 @@ impl CardElement {
 
     /// Add column to columnSet
     pub fn add_column(&mut self, column: Column) -> Self {
-        match self {
-            CardElement::ColumnSet {
-                columns,
-                select_action: _,
-                id: _,
-                separator: _,
-                spacing: _,
-            } => columns.push(column),
-            _ => {}
+        if let CardElement::ColumnSet {
+            columns,
+            select_action: _,
+            id: _,
+            separator: _,
+            spacing: _,
+        } = self
+        {
+            columns.push(column)
         }
         self.into()
     }
@@ -1085,9 +1085,8 @@ impl CardElement {
 
     /// Add action to actionSet
     pub fn add_action_to_set(&mut self, action: Action) -> Self {
-        match self {
-            CardElement::ActionSet { actions, height: _ } => actions.push(action),
-            _ => {}
+        if let CardElement::ActionSet { actions, height: _ } = self {
+            actions.push(action)
         }
         self.into()
     }
@@ -1136,6 +1135,12 @@ impl From<&mut Column> for Column {
     }
 }
 
+impl Default for Column {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Column {
     /// Creates new Column
     pub fn new() -> Self {
@@ -1181,7 +1186,7 @@ impl Column {
 pub struct Fact {
     /// The title of the fact.
     title: String,
-    /// 	The value of the fact.
+    /// The value of the fact.
     value: String,
 }
 
