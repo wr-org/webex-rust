@@ -1,5 +1,5 @@
-use serde_json::error::Error as SerdeError;
 use hyper::StatusCode;
+use serde_json::error::Error as SerdeError;
 
 error_chain! {
     foreign_links {
