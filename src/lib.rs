@@ -35,21 +35,18 @@ pub mod error;
 
 use error::{Error, ErrorKind};
 
-use futures::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
 use log::{debug, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::net::TcpStream;
-use tokio_tls::TlsStream;
-use tokio_tungstenite::stream::Stream;
-use tokio_tungstenite::{connect_async, WebSocketStream};
-use tungstenite::protocol::Message;
+use tokio_tungstenite::{WebSocketStream, MaybeTlsStream, connect_async};
+use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
 use crate::adaptive_card::AdaptiveCard;
 use crate::types::Attachment;
-use tungstenite;
+use futures_util::{SinkExt, StreamExt};
 
 /*
  * URLs:
@@ -64,7 +61,7 @@ const REST_HOST_PREFIX: &str = "https://api.ciscospark.com/v1";
 const REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
 /// Web Socket Stream type
-pub type WStream = WebSocketStream<Stream<TcpStream, TlsStream<TcpStream>>>;
+pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 /// Webex API Client
@@ -93,6 +90,7 @@ impl WebexEventStream {
     pub async fn next(&mut self) -> Result<types::Event, Error> {
         loop {
             let next = self.ws_stream.next();
+
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
                 Err(_) => return Err(format!("no activity for at least {:?}", self.timeout).into()),
@@ -179,9 +177,7 @@ impl Webex {
             },
         };
 
-        webex
-            .host_prefix
-            .insert("devices".to_string(), REGISTRATION_HOST_PREFIX.to_string());
+        webex.host_prefix.insert("devices".to_string(), REGISTRATION_HOST_PREFIX.to_string());
 
         webex
     }
@@ -245,18 +241,19 @@ impl Webex {
             Err(e) => { return Err(format!("Failed to setup device: {}", e).into()); }
         };
 
-        let url = url::Url::parse(ws_url.as_str())
-            .map_err(|e| Into::<Error>::into(format!("Unable to parse WS URL {}", e)))?;
-        debug!("Connecting to {:?}", url);
+        let url = url::Url::parse(ws_url.as_str()).map_err(|e| Into::<Error>::into(format!("Unable to parse WS URL {}", e)))?;
+        debug!("Connecting to #2 {:?}", url);
 
-        let (mut ws_stream, _response) = connect_async(url.clone())
-            .await
-            .map_err(|e| Into::<Error>::into(format!("connecting to {}, {}", url, e)))?;
-        debug!("Connected to {}", url);
-        self.ws_auth(&mut ws_stream).await?;
+        match connect_async(url.clone()).await {
+            Ok((mut ws_stream, _response)) => {
+                debug!("Connected to {}", url);
+                self.ws_auth(&mut ws_stream).await?;
 
-        let timeout = Duration::from_secs(20);
-        Ok(WebexEventStream { ws_stream, timeout, is_open: true })
+                let timeout = Duration::from_secs(20);
+                return Ok(WebexEventStream { ws_stream, timeout, is_open: true });
+            }
+            Err(e) => { return Err(Into::<Error>::into(format!("connecting to {}, {}", url, e))); }
+        };
     }
 
     /// Get attachment action
@@ -386,10 +383,7 @@ impl Webex {
         let prefix = self.host_prefix.get(rest_method).unwrap_or(&default_prefix);
         let url = format!("{}/{}", prefix, rest_method);
         debug!("Calling {} {:?}", http_method, url);
-        let mut builder = Request::builder()
-            .method(http_method)
-            .uri(url)
-            .header("Authorization", &self.bearer);
+        let mut builder = Request::builder().method(http_method).uri(url).header("Authorization", &self.bearer);
         if body.is_some() {
             builder = builder.header("Content-Type", "application/json");
         }
@@ -485,7 +479,7 @@ impl Webex {
         self.api_post("devices", self.device.clone()).await
     }
 
-    async fn ws_auth(&self, ws_stream: &mut WStream) -> Result<(), Error> {
+    async fn ws_auth(&self, ws_stream: &mut WebSocketStream<MaybeTlsStream<TcpStream>>) -> Result<(), Error> {
         /*
          * Authenticate to the stream
          */
@@ -497,9 +491,7 @@ impl Webex {
             },
         };
         debug!("Authenticating to stream");
-        match ws_stream
-            .send(Message::Text(serde_json::to_string(&auth).unwrap()))
-            .await {
+        match ws_stream.send(Message::Text(serde_json::to_string(&auth).unwrap())).await {
             Ok(_) => {
                 /*
                  * The next thing back should be a pong
@@ -558,10 +550,8 @@ impl types::MessageOut {
     /// * `msg` - the template message
     ///
     /// Use `from_msg` to create a reply from a received message.
-    #[deprecated(
-    since = "0.2.0",
-    note = "Please use the from instead"
-    )]
+    #[deprecated(since = "0.2.0",
+    note = "Please use the from instead")]
     pub fn from_msg(msg: &types::Message) -> Self {
         Self::from(msg)
     }

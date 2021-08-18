@@ -1,6 +1,5 @@
 use serde_json::error::Error as SerdeError;
 use hyper::StatusCode;
-use tungstenite;
 
 error_chain! {
     foreign_links {
@@ -29,7 +28,7 @@ error_chain! {
             display("{} Retry in: '{:?}'", s, t)
         }
 
-        Tungstenite(e: tungstenite::Error, t: String) {
+        Tungstenite(e: tokio_tungstenite::tungstenite::Error, t: String) {
             description("Failed WS")
             display("{} {}", e, t)
         }
