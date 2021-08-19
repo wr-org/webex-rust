@@ -95,7 +95,13 @@ impl WebexEventStream {
             let next = self.ws_stream.next();
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
-                Err(_) => return Err(format!("no activity for at least {:?}", self.timeout).into()),
+                Err(_) => {
+		    // This does not seem to be recoverable, or at least there are conditions under
+		    // which it does not recover. Indicate that the connection is closed and a new
+		    // one will have to be opened.
+		    self.is_open = false;
+		    return Err(format!("no activity for at least {:?}", self.timeout).into());
+		}
                 // Didn't time out
                 Ok(next_result) => match next_result {
                     Some(msg) => match msg {
