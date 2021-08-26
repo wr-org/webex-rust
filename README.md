@@ -1,6 +1,8 @@
 # webex-rust
 
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/webex)](https://crates.io/crates/webex)
+[![docs.rs](https://img.shields.io/docsrs/webex)](https://docs.rs/webex)
 
 A minimal asynchronous interface to Webex Teams, intended for (but not
 		limited to) implementing bots.
