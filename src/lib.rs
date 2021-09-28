@@ -445,7 +445,7 @@ impl Webex {
                 while let Some(chunk) = resp.body_mut().data().await {
                     use std::str;
 
-                    let chunk = chunk.unwrap();
+                    let chunk = chunk?;
                     let strchunk = str::from_utf8(&chunk).unwrap();
                     reply.push_str(&strchunk);
                 }
