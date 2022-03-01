@@ -306,7 +306,7 @@ pub struct Actor {
     #[serde(rename = "orgId")]
     pub org_id: String,
     #[serde(rename = "emailAddress")]
-    pub email_address: String,
+    pub email_address: Option<String>,
     #[serde(rename = "entryUUID")]
     pub entry_uuid: String,
     #[serde(rename = "type")]
