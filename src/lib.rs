@@ -284,6 +284,14 @@ impl Webex {
     }
 
     /// Get a message by ID
+    pub async fn get_message_with_cluster(&self, id: &str, cluster: &str) -> Result<types::Message, Error> {
+        let geo_id = get_message_geo_id(id, cluster);
+        let rest_method = format!("messages/{}", geo_id);
+        self.api_get(rest_method.as_str()).await
+    }
+
+    /// Get a message by ID (note: UUIDs no longer supported, if you have a UUID
+    /// message, please use get_message_with_cluster(id, cluster) instead - "us" is default.
     pub async fn get_message(&self, id: &str) -> Result<types::Message, Error> {
         let rest_method = format!("messages/{}", id);
         self.api_get(rest_method.as_str()).await
@@ -411,43 +419,35 @@ impl Webex {
         let req = builder.body(body).expect("request builder");
         match self.client.request(req).await {
             Ok(mut resp) => {
-                if !resp.status().is_success() {
-                    if resp.status() == hyper::StatusCode::LOCKED || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS {
-                        return Err(ErrorKind::Limited(resp.status(), match resp.headers().get("Retry-After") {
-                            None => { None }
-                            Some(timeout) => {
-                                match timeout.to_str() {
-                                    Ok(time) => {
-                                        match time.parse::<i64>() {
-                                            Ok(t) => { Some(t) }
-                                            Err(_) => { None }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        debug!("Unable to parse retry-after value: {}", e);
-                                        None
+                if resp.status() == hyper::StatusCode::LOCKED || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS {
+                    return Err(ErrorKind::Limited(resp.status(), match resp.headers().get("Retry-After") {
+                        None => { None }
+                        Some(timeout) => {
+                            match timeout.to_str() {
+                                Ok(time) => {
+                                    match time.parse::<i64>() {
+                                        Ok(t) => { Some(t) }
+                                        Err(_) => { None }
                                     }
                                 }
+                                Err(e) => {
+                                    debug!("Unable to parse retry-after value: {}", e);
+                                    None
+                                }
                             }
-                        }).into());
-                    }
-                    let mut reply = String::new();
-                    while let Some(chunk) = resp.body_mut().data().await {
-                        use std::str;
-
-                        let chunk = chunk.unwrap();
-                        let strchunk = str::from_utf8(&chunk).unwrap();
-                        reply.push_str(&strchunk);
-                    }
-                    return Err(ErrorKind::StatusText(resp.status(), reply).into());
+                        }
+                    }).into());
                 }
                 let mut reply = String::new();
                 while let Some(chunk) = resp.body_mut().data().await {
                     use std::str;
 
-                    let chunk = chunk?;
+                    let chunk = chunk.unwrap();
                     let strchunk = str::from_utf8(&chunk).unwrap();
                     reply.push_str(&strchunk);
+                }
+                if !resp.status().is_success() {
+                    return Err(ErrorKind::StatusText(resp.status(), reply).into());
                 }
                 Ok(reply)
             }
@@ -586,4 +586,22 @@ impl types::MessageOut {
         self.attachments = Some(vec![Attachment { content_type: "application/vnd.microsoft.card.adaptive".to_string(), content: card }]);
         self
     }
+}
+
+impl types::Target {
+    /// Turns a `Target` into a cluster - used for message geodata
+    pub fn get_cluster(&self) -> String {
+        let target_info = String::from_utf8(base64::decode(&self.global_id)
+            .expect("event.data.target.globalId should be a base64 string"))
+            .expect("decoded globalId should be a valid utf-8 string");
+        let cluster = target_info
+            .split("/")
+            .nth(2)
+            .expect("event.data.target.globalId should be in the form ciscospark://[cluster]/[type]/[id]");
+        cluster.to_string()
+    }
+}
+
+fn get_message_geo_id(id: &str, cluster: &str) -> String {
+    base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id))
 }

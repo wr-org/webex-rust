@@ -365,6 +365,8 @@ pub struct Target {
     pub participants: MiscItems,
     pub activities: MiscItems,
     pub tags: Vec<String>,
+    #[serde(rename = "globalId")]
+    pub global_id: String,
 }
 
 #[allow(missing_docs)]
