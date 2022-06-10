@@ -1,7 +1,7 @@
 use std::env;
 
-const BOT_ACCESS_TOKEN: &'static str = "BOT_ACCESS_TOKEN";
-const BOT_EMAIL: &'static str = "BOT_EMAIL";
+const BOT_ACCESS_TOKEN: &str = "BOT_ACCESS_TOKEN";
+const BOT_EMAIL: &str = "BOT_EMAIL";
 
 ///
 /// # Autoreply
@@ -26,9 +26,9 @@ const BOT_EMAIL: &'static str = "BOT_EMAIL";
 #[tokio::main]
 async fn main() {
     let token = env::var(BOT_ACCESS_TOKEN)
-        .expect(format!("{} not specified in environment", BOT_ACCESS_TOKEN).as_str());
+        .unwrap_or_else(|_| panic!("{} not specified in environment", BOT_ACCESS_TOKEN));
     let bot_email =
-        env::var(BOT_EMAIL).expect(format!("{} not specified in environment", BOT_EMAIL).as_str());
+        env::var(BOT_EMAIL).unwrap_or_else(|_| panic!("{} not specified in environment", BOT_EMAIL));
 
     let webex = webex::Webex::new(token.as_str());
     let mut event_stream = webex.event_stream().await.expect("event stream");
@@ -39,7 +39,7 @@ async fn main() {
             if let Some(activity) = &event.data.activity {
                 if activity.verb.as_str() == "post" {
                     // The event stream doesn't contain the message -- you have to go fetch it
-                    if let Ok(msg) = webex.get_message(&activity.id.as_str()).await {
+                    if let Ok(msg) = webex.get_message(activity.id.as_str()).await {
                         match &msg.person_email {
                             // Reply as long as it doesn't appear to be our own message
                             // In practice, this shouldn't happen since bots can't see messages

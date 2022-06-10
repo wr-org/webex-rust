@@ -1,7 +1,7 @@
 use std::env;
 
-const BOT_ACCESS_TOKEN: &'static str = "BOT_ACCESS_TOKEN";
-const DEST_EMAIL: &'static str = "DEST_EMAIL";
+const BOT_ACCESS_TOKEN: &str = "BOT_ACCESS_TOKEN";
+const DEST_EMAIL: &str = "DEST_EMAIL";
 
 /// # Hello World
 ///
@@ -24,9 +24,9 @@ const DEST_EMAIL: &'static str = "DEST_EMAIL";
 #[tokio::main]
 async fn main() {
     let token = env::var(BOT_ACCESS_TOKEN)
-        .expect(format!("{} not specified in environment", BOT_ACCESS_TOKEN).as_str());
+        .unwrap_or_else(|_| panic!("{} not specified in environment", BOT_ACCESS_TOKEN));
     let to_email = env::var(DEST_EMAIL)
-        .expect(format!("{} not specified in environment", DEST_EMAIL).as_str());
+        .unwrap_or_else(|_| panic!("{} not specified in environment", DEST_EMAIL));
 
     let webex = webex::Webex::new(token.as_str());
     let text = format!("Hello, {}", to_email);

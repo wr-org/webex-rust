@@ -29,16 +29,19 @@
 extern crate error_chain;
 
 pub mod adaptive_card;
-pub mod types;
 #[allow(missing_docs)]
 pub mod error;
+pub mod types;
 
 use error::{Error, ErrorKind};
+use uuid::Uuid;
 
+use crate::adaptive_card::AdaptiveCard;
+use crate::types::Attachment;
 use futures::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use log::{trace, debug, warn};
+use log::{debug, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::net::TcpStream;
@@ -46,10 +49,6 @@ use tokio_tls::TlsStream;
 use tokio_tungstenite::stream::Stream;
 use tokio_tungstenite::{connect_async, WebSocketStream};
 use tungstenite::protocol::Message;
-use uuid::Uuid;
-use crate::adaptive_card::AdaptiveCard;
-use crate::types::Attachment;
-use tungstenite;
 
 /*
  * URLs:
@@ -96,12 +95,12 @@ impl WebexEventStream {
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
                 Err(_) => {
-		    // This does not seem to be recoverable, or at least there are conditions under
-		    // which it does not recover. Indicate that the connection is closed and a new
-		    // one will have to be opened.
-		    self.is_open = false;
-		    return Err(format!("no activity for at least {:?}", self.timeout).into());
-		}
+                    // This does not seem to be recoverable, or at least there are conditions under
+                    // which it does not recover. Indicate that the connection is closed and a new
+                    // one will have to be opened.
+                    self.is_open = false;
+                    return Err(format!("no activity for at least {:?}", self.timeout).into());
+                }
                 // Didn't time out
                 Ok(next_result) => match next_result {
                     Some(msg) => match msg {
@@ -118,7 +117,7 @@ impl WebexEventStream {
                                 Err(e) => return Err(e),
                             };
                         }
-			Err(tungstenite::error::Error::Protocol(e)) => {
+                        Err(tungstenite::error::Error::Protocol(e)) => {
                             // Protocol error probably requires a connection reset
                             self.is_open = false;
                             return Err(e.to_string().into());
@@ -200,27 +199,35 @@ impl Webex {
     /// Get an event stream handle
     pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
         let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
-            Ok(d) => { d }
+            Ok(d) => d,
             Err(e) => {
                 warn!("Failed to get devices {}", e);
                 match self.setup_devices().await {
                     Ok(_) => {}
-                    Err(e) => { return Err(e.into()); }
+                    Err(e) => {
+                        return Err(e);
+                    }
                 };
                 match self.get_devices().await {
-                    Ok(d) => { d }
-                    Err(e) => { return Err(e.into()); }
+                    Ok(d) => d,
+                    Err(e) => {
+                        return Err(e);
+                    }
                 }
             }
         };
 
-        devices.sort_by(|a: &types::DeviceData, b: &types::DeviceData| b.modification_time.unwrap_or(chrono::Utc::now()).cmp(&a.modification_time.unwrap_or(chrono::Utc::now())));
+        devices.sort_by(|a: &types::DeviceData, b: &types::DeviceData| {
+            b.modification_time
+                .unwrap_or_else(chrono::Utc::now)
+                .cmp(&a.modification_time.unwrap_or_else(chrono::Utc::now))
+        });
 
         for device in devices {
             match device.ws_url {
                 Some(ws_url) => {
                     let url = match url::Url::parse(ws_url.as_str()) {
-                        Ok(u) => { u }
+                        Ok(u) => u,
                         Err(e) => {
                             warn!("Failed to parse {:?}", e);
                             continue;
@@ -233,7 +240,11 @@ impl Webex {
                             self.ws_auth(&mut ws_stream).await?;
 
                             let timeout = Duration::from_secs(20);
-                            return Ok(WebexEventStream { ws_stream, timeout, is_open: true });
+                            return Ok(WebexEventStream {
+                                ws_stream,
+                                timeout,
+                                is_open: true,
+                            });
                         }
                         Err(e) => {
                             warn!("Failed to connect to {:?}: {:?}", url, e);
@@ -247,13 +258,13 @@ impl Webex {
 
         // Failed to connect to any existing devices, creating new one
         let ws_url = match self.setup_devices().await {
-            Ok(d) => {
-                match d.ws_url {
-                    Some(url) => url.clone(),
-                    None => return Err("Registered device has no ws url".into())
-                }
+            Ok(d) => match d.ws_url {
+                Some(url) => url.clone(),
+                None => return Err("Registered device has no ws url".into()),
+            },
+            Err(e) => {
+                return Err(format!("Failed to setup device: {}", e).into());
             }
-            Err(e) => { return Err(format!("Failed to setup device: {}", e).into()); }
         };
 
         let url = url::Url::parse(ws_url.as_str())
@@ -267,7 +278,11 @@ impl Webex {
         self.ws_auth(&mut ws_stream).await?;
 
         let timeout = Duration::from_secs(20);
-        Ok(WebexEventStream { ws_stream, timeout, is_open: true })
+        Ok(WebexEventStream {
+            ws_stream,
+            timeout,
+            is_open: true,
+        })
     }
 
     /// Get attachment action
@@ -284,7 +299,11 @@ impl Webex {
     }
 
     /// Get a message by ID
-    pub async fn get_message_with_cluster(&self, id: &str, cluster: &str) -> Result<types::Message, Error> {
+    pub async fn get_message_with_cluster(
+        &self,
+        id: &str,
+        cluster: &str,
+    ) -> Result<types::Message, Error> {
         let geo_id = get_message_geo_id(id, cluster);
         let rest_method = format!("messages/{}", geo_id);
         self.api_get(rest_method.as_str()).await
@@ -343,10 +362,7 @@ impl Webex {
     }
 
     /// Send a message to a user or room
-    pub async fn send_message(
-        &self,
-        message: &types::MessageOut,
-    ) -> Result<types::Message, Error> {
+    pub async fn send_message(&self, message: &types::MessageOut) -> Result<types::Message, Error> {
         self.api_post("messages", &message).await
     }
 
@@ -419,24 +435,26 @@ impl Webex {
         let req = builder.body(body).expect("request builder");
         match self.client.request(req).await {
             Ok(mut resp) => {
-                if resp.status() == hyper::StatusCode::LOCKED || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS {
-                    return Err(ErrorKind::Limited(resp.status(), match resp.headers().get("Retry-After") {
-                        None => { None }
-                        Some(timeout) => {
-                            match timeout.to_str() {
-                                Ok(time) => {
-                                    match time.parse::<i64>() {
-                                        Ok(t) => { Some(t) }
-                                        Err(_) => { None }
-                                    }
-                                }
+                if resp.status() == hyper::StatusCode::LOCKED
+                    || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS
+                {
+                    return Err(ErrorKind::Limited(
+                        resp.status(),
+                        match resp.headers().get("Retry-After") {
+                            None => None,
+                            Some(timeout) => match timeout.to_str() {
+                                Ok(time) => match time.parse::<i64>() {
+                                    Ok(t) => Some(t),
+                                    Err(_) => None,
+                                },
                                 Err(e) => {
                                     debug!("Unable to parse retry-after value: {}", e);
                                     None
                                 }
-                            }
-                        }
-                    }).into());
+                            },
+                        },
+                    )
+                    .into());
                 }
                 let mut reply = String::new();
                 while let Some(chunk) = resp.body_mut().data().await {
@@ -444,14 +462,14 @@ impl Webex {
 
                     let chunk = chunk.unwrap();
                     let strchunk = str::from_utf8(&chunk).unwrap();
-                    reply.push_str(&strchunk);
+                    reply.push_str(strchunk);
                 }
                 if !resp.status().is_success() {
                     return Err(ErrorKind::StatusText(resp.status(), reply).into());
                 }
                 Ok(reply)
             }
-            Err(e) => { Err(Error::with_chain(e, "request failed")) }
+            Err(e) => Err(Error::with_chain(e, "request failed")),
         }
     }
 
@@ -463,32 +481,29 @@ impl Webex {
                 None => {
                     debug!("Chaining one-time device setup from devices query");
                     match self.setup_devices().await {
-                        Ok(device) => { Ok(vec![device]) }
-                        Err(e) => { Err(e) }
+                        Ok(device) => Ok(vec![device]),
+                        Err(e) => Err(e),
                     }
                 }
             },
-            Err(e) => {
-                match e {
-                    Error(ErrorKind::Status(s), _) => {
-                        if s == hyper::StatusCode::NOT_FOUND {
-                            debug!("No devices found, creating new one");
-                            match self.setup_devices().await {
-                                Ok(device) => { Ok(vec![device]) }
-                                Err(e) => { Err(e) }
-                            }
-                        } else {
-                            Err(Error::with_chain(e, "Can't decode devices reply"))
+            Err(e) => match e {
+                Error(ErrorKind::Status(s), _) => {
+                    if s == hyper::StatusCode::NOT_FOUND {
+                        debug!("No devices found, creating new one");
+                        match self.setup_devices().await {
+                            Ok(device) => Ok(vec![device]),
+                            Err(e) => Err(e),
                         }
-                    }
-                    Error(ErrorKind::Limited(_, t), _) => {
-                        Err(Error::with_chain(e, format!("We are hitting the API limit, retry after: {:?}", t)))
-                    }
-                    _ => {
-                        Err(format!("Can't decode devices reply: {}", e).into())
+                    } else {
+                        Err(Error::with_chain(e, "Can't decode devices reply"))
                     }
                 }
-            }
+                Error(ErrorKind::Limited(_, t), _) => Err(Error::with_chain(
+                    e,
+                    format!("We are hitting the API limit, retry after: {:?}", t),
+                )),
+                _ => Err(format!("Can't decode devices reply: {}", e).into()),
+            },
         }
     }
 
@@ -510,7 +525,8 @@ impl Webex {
         debug!("Authenticating to stream");
         match ws_stream
             .send(Message::Text(serde_json::to_string(&auth).unwrap()))
-            .await {
+            .await
+        {
             Ok(_) => {
                 /*
                  * The next thing back should be a pong
@@ -529,19 +545,19 @@ impl Webex {
                     None => Err("Websocket closed".to_string().into()),
                 }
             }
-            Err(e) => Err(
-                ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
+            Err(e) => {
+                Err(ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
+            }
         }
     }
 }
 
 impl From<&types::Action> for types::MessageOut {
     fn from(action: &types::Action) -> Self {
-        let mut new_msg: Self = Default::default();
-
-        new_msg.room_id = action.room_id.clone();
-
-        new_msg
+        types::MessageOut {
+            room_id: action.room_id.clone(),
+            ..Default::default()
+        }
     }
 }
 
@@ -569,10 +585,7 @@ impl types::MessageOut {
     /// * `msg` - the template message
     ///
     /// Use `from_msg` to create a reply from a received message.
-    #[deprecated(
-    since = "0.2.0",
-    note = "Please use the from instead"
-    )]
+    #[deprecated(since = "0.2.0", note = "Please use the from instead")]
     pub fn from_msg(msg: &types::Message) -> Self {
         Self::from(msg)
     }
@@ -583,7 +596,10 @@ impl types::MessageOut {
     ///
     /// * `card` - Adaptive Card to attach
     pub fn add_attachment(&mut self, card: AdaptiveCard) -> &Self {
-        self.attachments = Some(vec![Attachment { content_type: "application/vnd.microsoft.card.adaptive".to_string(), content: card }]);
+        self.attachments = Some(vec![Attachment {
+            content_type: "application/vnd.microsoft.card.adaptive".to_string(),
+            content: card,
+        }]);
         self
     }
 }
@@ -591,13 +607,14 @@ impl types::MessageOut {
 impl types::Target {
     /// Turns a `Target` into a cluster - used for message geodata
     pub fn get_cluster(&self) -> String {
-        let target_info = String::from_utf8(base64::decode(&self.global_id)
-            .expect("event.data.target.globalId should be a base64 string"))
-            .expect("decoded globalId should be a valid utf-8 string");
-        let cluster = target_info
-            .split("/")
-            .nth(2)
-            .expect("event.data.target.globalId should be in the form ciscospark://[cluster]/[type]/[id]");
+        let target_info = String::from_utf8(
+            base64::decode(&self.global_id)
+                .expect("event.data.target.globalId should be a base64 string"),
+        )
+        .expect("decoded globalId should be a valid utf-8 string");
+        let cluster = target_info.split('/').nth(2).expect(
+            "event.data.target.globalId should be in the form ciscospark://[cluster]/[type]/[id]",
+        );
         cluster.to_string()
     }
 }
