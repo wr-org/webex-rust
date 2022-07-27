@@ -534,7 +534,7 @@ impl Webex {
                 match ws_stream.next().await {
                     Some(msg) => match msg {
                         Ok(msg) => match msg {
-                            Message::Pong(_) => {
+                            Message::Ping(_) | Message::Pong(_) => {
                                 debug!("Authentication succeeded");
                                 Ok(())
                             }
