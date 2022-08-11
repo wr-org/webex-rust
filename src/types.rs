@@ -310,7 +310,7 @@ pub struct Actor {
     #[serde(rename = "entryUUID")]
     pub entry_uuid: String,
     #[serde(rename = "type")]
-    pub actor_type: String,
+    pub actor_type: Option<String>,
 }
 
 #[allow(missing_docs)]
