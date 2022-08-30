@@ -201,7 +201,7 @@ pub struct DeviceData {
     pub org_id: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceFeatures {
@@ -213,7 +213,7 @@ pub struct DeviceFeatures {
     pub user: Option<Vec<DeviceFeatureData>>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceFeatureData {
@@ -231,7 +231,7 @@ pub struct DeviceFeatureData {
     pub deleted_time: Option<i64>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceCapabilities {
@@ -241,7 +241,7 @@ pub struct DeviceCapabilities {
     pub sdp_supported: bool,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceSettings {

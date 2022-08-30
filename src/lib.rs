@@ -150,6 +150,10 @@ impl WebexEventStream {
                 debug!("Pong!");
                 Ok(None)
             }
+            Message::Frame(_) => {
+                debug!("Frame");
+                Ok(None)
+            }
         }
     }
 }
@@ -225,7 +229,7 @@ impl Webex {
                     Ok((mut ws_stream, _response)) => {
                         debug!("Connected to {}", url);
                         self.ws_auth(&mut ws_stream).await?;
-
+                        debug!("Authenticated");
                         let timeout = Duration::from_secs(20);
                         return Ok(WebexEventStream {
                             ws_stream,
@@ -289,6 +293,12 @@ impl Webex {
     pub async fn get_message(&self, id: &str) -> Result<types::Message, Error> {
         let rest_method = format!("messages/{}", id);
         self.api_get(rest_method.as_str()).await
+    }
+
+    /// Get a message by WebSocket ID
+    pub async fn get_ws_message(&self, id: &str) -> Result<types::Message, Error> {
+        self.get_message(&base64::encode(format!("ciscospark://us/MESSAGE/{}", id)))
+            .await
     }
 
     /// Delete a message by ID
@@ -414,6 +424,7 @@ impl Webex {
                     if resp.status() == hyper::StatusCode::LOCKED
                         || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS
                     {
+                        warn!("Limited");
                         return Err(ErrorKind::Limited(
                             resp.status(),
                             match resp.headers().get("Retry-After") {
@@ -513,24 +524,7 @@ impl Webex {
             .send(Message::Text(serde_json::to_string(&auth).unwrap()))
             .await
         {
-            Ok(_) => {
-                /*
-                 * The next thing back should be a pong
-                 */
-                match ws_stream.next().await {
-                    Some(msg) => match msg {
-                        Ok(msg) => match msg {
-                            Message::Pong(_) => {
-                                debug!("Authentication succeeded");
-                                Ok(())
-                            }
-                            _ => Err(format!("Received {:?} in reply to auth message", msg).into()),
-                        },
-                        Err(e) => Err(format!("Received error from websocket: {}", e).into()),
-                    },
-                    None => Err("Websocket closed".to_string().into()),
-                }
-            }
+            Ok(_) => Ok(()),
             Err(e) => {
                 Err(ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
             }
