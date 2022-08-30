@@ -420,7 +420,6 @@ impl Webex {
         let req = builder.body(body).expect("request builder");
         match self.client.request(req).await {
             Ok(mut resp) => {
-                println!("Got some reply");
                 if !resp.status().is_success() {
                     if resp.status() == hyper::StatusCode::LOCKED
                         || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS
@@ -452,7 +451,6 @@ impl Webex {
                         let strchunk = str::from_utf8(&chunk).unwrap();
                         reply.push_str(strchunk);
                     }
-                    println!("The reply is: {}", reply);
                     return Err(ErrorKind::StatusText(resp.status(), reply).into());
                 }
                 let mut reply = String::new();
