@@ -150,6 +150,10 @@ impl WebexEventStream {
                 debug!("Pong!");
                 Ok(None)
             }
+            Message::Frame(_) => {
+                debug!("Frame");
+                Ok(None)
+            }
         }
     }
 }
