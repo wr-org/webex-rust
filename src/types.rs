@@ -425,20 +425,22 @@ pub struct AttachmentAction {
     /// A unique identifier for the action.
     pub id: String,
     /// The type of action performed.
-    #[serde(rename = "type")]
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub action_type: Option<String>,
     /// The parent message the attachment action was performed on.
-    #[serde(rename = "messageId")]
+    #[serde(rename = "messageId", skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
     /// The action's inputs.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub inputs: Option<HashMap<String, String>>,
     /// The ID of the person who performed the action.
-    #[serde(rename = "personId")]
+    #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The ID of the room the action was performed within.
-    #[serde(rename = "roomId")]
+    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The date and time the action was created.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
 }
 
