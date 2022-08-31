@@ -194,11 +194,8 @@ impl Webex {
             Ok(d) => d,
             Err(e) => {
                 warn!("Failed to get devices {}", e);
-                match self.setup_devices().await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(e);
-                    }
+                if let Err(e) = self.setup_devices().await {
+                    return Err(e);
                 };
                 match self.get_devices().await {
                     Ok(d) => d,
@@ -285,20 +282,30 @@ impl Webex {
     /// Retrieves the attachment for the given ID.  This can be used to
     /// retrieve data from an AdaptiveCard submission
     pub async fn get_attachment_action(&self, id: &str) -> Result<types::AttachmentAction, Error> {
-        let rest_method = format!("attachment/actions/{}", id);
+        let rest_method = match Uuid::parse_str(id) {
+            Ok(_) => format!(
+                "attachment/actions/{}",
+                base64::encode(format!("ciscospark://us/ATTACHMENT_ACTION/{}", id))
+            ),
+            Err(_) => {
+                format!("attachment/actions/{}", id)
+            }
+        };
         self.api_get(rest_method.as_str()).await
     }
 
     /// Get a message by ID
     pub async fn get_message(&self, id: &str) -> Result<types::Message, Error> {
-        let rest_method = format!("messages/{}", id);
+        let rest_method = match Uuid::parse_str(id) {
+            Ok(_) => format!(
+                "messages/{}",
+                base64::encode(format!("ciscospark://us/MESSAGE/{}", id))
+            ),
+            Err(_) => {
+                format!("messages/{}", id)
+            }
+        };
         self.api_get(rest_method.as_str()).await
-    }
-
-    /// Get a message by WebSocket ID
-    pub async fn get_ws_message(&self, id: &str) -> Result<types::Message, Error> {
-        self.get_message(&base64::encode(format!("ciscospark://us/MESSAGE/{}", id)))
-            .await
     }
 
     /// Delete a message by ID
@@ -318,7 +325,15 @@ impl Webex {
 
     /// Get available room
     pub async fn get_room(&self, id: &str) -> Result<types::Room, Error> {
-        let rest_method = format!("rooms/{}", id);
+        let rest_method = match Uuid::parse_str(id) {
+            Ok(_) => format!(
+                "rooms/{}",
+                base64::encode(format!("ciscospark://us/ROOM/{}", id))
+            ),
+            Err(_) => {
+                format!("rooms/{}", id)
+            }
+        };
         let room_reply: Result<types::Room, _> = self.api_get(rest_method.as_str()).await;
         match room_reply {
             Err(e) => Err(Error::with_chain(e, "room failed: ")),
@@ -328,20 +343,18 @@ impl Webex {
 
     /// Get information about person
     pub async fn get_person(&self, id: &str) -> Result<types::Person, Error> {
-        let rest_method = format!("people/{}", id);
+        let rest_method = match Uuid::parse_str(id) {
+            Ok(_) => format!(
+                "people/{}",
+                base64::encode(format!("ciscospark://us/PEOPLE/{}", id))
+            ),
+            Err(_) => {
+                format!("people/{}", id)
+            }
+        };
         let people_reply: Result<types::Person, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
             Err(e) => Err(Error::with_chain(e, "people failed: ")),
-            Ok(pr) => Ok(pr),
-        }
-    }
-
-    /// Get information about attachment action
-    pub async fn get_action(&self, id: &str) -> Result<types::Action, Error> {
-        let rest_method = format!("attachment/actions/{}", id);
-        let people_reply: Result<types::Action, _> = self.api_get(rest_method.as_str()).await;
-        match people_reply {
-            Err(e) => Err(Error::with_chain(e, "action failed: ")),
             Ok(pr) => Ok(pr),
         }
     }
@@ -361,7 +374,7 @@ impl Webex {
         self.rest_api("GET", rest_method, body).await
     }
 
-    async fn api_delete<T: DeserializeOwned>(&self, rest_method: &str) -> Result<T, Error> {
+    async fn api_delete(&self, rest_method: &str) -> Result<(), Error> {
         let body: Option<String> = None;
         self.rest_api("DELETE", rest_method, body).await
     }
@@ -532,8 +545,8 @@ impl Webex {
     }
 }
 
-impl From<&types::Action> for types::MessageOut {
-    fn from(action: &types::Action) -> Self {
+impl From<&types::AttachmentAction> for types::MessageOut {
+    fn from(action: &types::AttachmentAction) -> Self {
         types::MessageOut {
             room_id: action.room_id.clone(),
             ..Default::default()
