@@ -124,7 +124,6 @@ pub struct Message {
     /// The date and time the message was updated, if it was edited.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
-
 }
 
 /// API Message reply

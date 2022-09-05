@@ -1,5 +1,5 @@
+use hyper::{Error as HyperError, StatusCode};
 use serde_json::error::Error as SerdeError;
-use hyper::{StatusCode, Error as HyperError};
 use tungstenite;
 
 error_chain! {
@@ -7,7 +7,7 @@ error_chain! {
         Io(std::io::Error);
         Json(SerdeError);
         UTF8(std::string::FromUtf8Error);
-	Hyper(HyperError);
+        Hyper(HyperError);
     }
     errors {
         Closed(m: String) {

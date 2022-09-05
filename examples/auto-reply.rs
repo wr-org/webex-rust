@@ -27,8 +27,8 @@ const BOT_EMAIL: &str = "BOT_EMAIL";
 async fn main() {
     let token = env::var(BOT_ACCESS_TOKEN)
         .unwrap_or_else(|_| panic!("{} not specified in environment", BOT_ACCESS_TOKEN));
-    let bot_email =
-        env::var(BOT_EMAIL).unwrap_or_else(|_| panic!("{} not specified in environment", BOT_EMAIL));
+    let bot_email = env::var(BOT_EMAIL)
+        .unwrap_or_else(|_| panic!("{} not specified in environment", BOT_EMAIL));
 
     let webex = webex::Webex::new(token.as_str());
     let mut event_stream = webex.event_stream().await.expect("event stream");
