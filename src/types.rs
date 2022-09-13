@@ -425,21 +425,23 @@ pub struct AttachmentAction {
     /// A unique identifier for the action.
     pub id: String,
     /// The type of action performed.
-    #[serde(rename = "type")]
-    pub action_type: String,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub action_type: Option<String>,
     /// The parent message the attachment action was performed on.
-    #[serde(rename = "messageId")]
-    pub message_id: String,
+    #[serde(rename = "messageId", skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
     /// The action's inputs.
-    pub inputs: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inputs: Option<HashMap<String, String>>,
     /// The ID of the person who performed the action.
-    #[serde(rename = "personId")]
-    pub person_id: String,
+    #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
     /// The ID of the room the action was performed within.
-    #[serde(rename = "roomId")]
-    pub room_id: String,
+    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
+    pub room_id: Option<String>,
     /// The date and time the action was created.
-    pub created: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
 }
 
 /// Person information
@@ -498,30 +500,4 @@ pub struct PhoneNumber {
     pub number_type: String,
     /// Phone number
     pub value: String,
-}
-
-/// Details for Attachment Action
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Action {
-    /// A unique identifier for the action.
-    pub id: String,
-    /// The type of action performed.
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    pub type_field: Option<String>,
-    /// The parent message the attachment action was performed on.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
-    /// The action's inputs.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub inputs: Option<HashMap<String, String>>,
-    /// The ID of the person who performed the action.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub person_id: Option<String>,
-    /// The ID of the room the action was performed within.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub room_id: Option<String>,
-    /// The date and time the action was created.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub created: Option<String>,
 }
