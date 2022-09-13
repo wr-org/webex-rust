@@ -201,11 +201,7 @@ impl Webex {
         let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
             Ok(d) => d,
             Err(e) => {
-                if let Error(ErrorKind::StatusText(hyper::StatusCode::NOT_FOUND, _), _) = e {
-                    debug!("No devices found, retrying...");
-                } else {
-                    warn!("Failed to get devices with error {}", e);
-                }
+                warn!("Failed to get devices with error {}, retrying...", e);
                 match self.setup_devices().await {
                     Ok(_) => {}
                     Err(e) => {
@@ -491,7 +487,7 @@ impl Webex {
                 }
             },
             Err(e) => match e {
-                Error(ErrorKind::Status(s), _) => {
+                Error(ErrorKind::Status(s), _) | Error(ErrorKind::StatusText(s, _), _) => {
                     if s == hyper::StatusCode::NOT_FOUND {
                         debug!("No devices found, creating new one");
                         match self.setup_devices().await {
