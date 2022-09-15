@@ -347,6 +347,44 @@ pub struct Activity {
 }
 
 #[allow(missing_docs)]
+impl Activity {
+    pub fn get_message_id(&self) -> MessageId {
+        if let Some(target) = &self.target {
+            MessageId { id: target.global_id.clone() }
+        } else {
+            MessageId::new(self.id.clone())
+        }
+    }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone)]
+pub struct MessageId {
+    id: String,
+}
+
+#[allow(missing_docs)]
+impl From<String> for MessageId {
+    fn from(s: String) -> MessageId {
+        MessageId::new(s)
+    }
+}
+
+#[allow(missing_docs)]
+impl MessageId {
+    pub fn new(id: String) -> Self {
+        Self::new_with_cluster(id, None)
+    }
+    pub fn new_with_cluster(id: String, cluster: Option<String>) -> Self {
+        let cluster = cluster.as_deref().unwrap_or("us");
+        Self { id: base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)) }
+    }
+    pub fn id(&self) -> String {
+        self.id.clone()
+    }
+}
+
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct VectorCounters {
     #[serde(rename = "sourceDC")]

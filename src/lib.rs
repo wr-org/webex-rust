@@ -304,29 +304,12 @@ impl Webex {
         self.api_get(rest_method.as_str()).await
     }
 
-    /// Get a message by ID
-    pub async fn get_message_with_cluster(
-        &self,
-        id: &str,
-        cluster: &str,
-    ) -> Result<types::Message, Error> {
-        let geo_id = get_message_geo_id(id, cluster);
-        let rest_method = format!("messages/{}", geo_id);
-        self.api_get(rest_method.as_str()).await
-    }
-
-    /// Get a message by ID (note: UUIDs no longer supported, if you have a UUID
-    /// message, please use get_message_with_cluster(id, cluster) instead - "us" is default.
-    pub async fn get_message(&self, id: &str) -> Result<types::Message, Error> {
-        let rest_method = match Uuid::parse_str(id) {
-            Ok(_) => format!(
-                "messages/{}",
-                base64::encode(format!("ciscospark://us/MESSAGE/{}", id))
-            ),
-            Err(_) => {
-                format!("messages/{}", id)
-            }
-        };
+    /// Get a message by ID (note: UUIDs no longer supported)
+    /// If you have a UUID, please use `MessageId::new(id)` or `MessageId::from(id)`.
+    /// If you have an `Activity`, use `Activity::get_message_id()`.
+    pub async fn get_message(&self, id: &types::MessageId) -> Result<types::Message, Error> {
+        //self.get_message_with_cluster(id, "us").await
+        let rest_method = format!("messages/{}", id.id());
         self.api_get(rest_method.as_str()).await
     }
 
@@ -636,21 +619,3 @@ impl types::MessageOut {
     }
 }
 
-impl types::Target {
-    /// Turns a `Target` into a cluster - used for message geodata
-    pub fn get_cluster(&self) -> String {
-        let target_info = String::from_utf8(
-            base64::decode(&self.global_id)
-                .expect("event.data.target.globalId should be a base64 string"),
-        )
-        .expect("decoded globalId should be a valid utf-8 string");
-        let cluster = target_info.split('/').nth(2).expect(
-            "event.data.target.globalId should be in the form ciscospark://[cluster]/[type]/[id]",
-        );
-        cluster.to_string()
-    }
-}
-
-fn get_message_geo_id(id: &str, cluster: &str) -> String {
-    base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id))
-}
