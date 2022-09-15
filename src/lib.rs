@@ -39,6 +39,7 @@ use uuid::Uuid;
 use crate::adaptive_card::AdaptiveCard;
 use crate::types::Attachment;
 use futures::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
 use log::{debug, trace, warn};
@@ -49,6 +50,9 @@ use tokio_tls::TlsStream;
 use tokio_tungstenite::stream::Stream;
 use tokio_tungstenite::{connect_async, WebSocketStream};
 use tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use uuid::Uuid;
 
 /*
  * URLs:
@@ -63,7 +67,7 @@ const REST_HOST_PREFIX: &str = "https://api.ciscospark.com/v1";
 const REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
 /// Web Socket Stream type
-pub type WStream = WebSocketStream<Stream<TcpStream, TlsStream<TcpStream>>>;
+pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 /// Webex API Client
@@ -92,6 +96,7 @@ impl WebexEventStream {
     pub async fn next(&mut self) -> Result<types::Event, Error> {
         loop {
             let next = self.ws_stream.next();
+
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
                 Err(_) => {
@@ -162,6 +167,10 @@ impl WebexEventStream {
                 debug!("Pong!");
                 Ok(None)
             }
+            Message::Frame(_) => {
+                debug!("Frame");
+                Ok(None)
+            }
         }
     }
 }
@@ -201,12 +210,9 @@ impl Webex {
         let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
             Ok(d) => d,
             Err(e) => {
-                warn!("Failed to get devices with error {}, retrying...", e);
-                match self.setup_devices().await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(e);
-                    }
+                warn!("Failed to get devices {}", e);
+                if let Err(e) = self.setup_devices().await {
+                    return Err(e);
                 };
                 match self.get_devices().await {
                     Ok(d) => d,
@@ -224,35 +230,32 @@ impl Webex {
         });
 
         for device in devices {
-            match device.ws_url {
-                Some(ws_url) => {
-                    let url = match url::Url::parse(ws_url.as_str()) {
-                        Ok(u) => u,
-                        Err(e) => {
-                            warn!("Failed to parse {:?}", e);
-                            continue;
-                        }
-                    };
-                    debug!("Connecting to {:?}", url);
-                    match connect_async(url.clone()).await {
-                        Ok((mut ws_stream, _response)) => {
-                            debug!("Connected to {}", url);
-                            self.ws_auth(&mut ws_stream).await?;
-
-                            let timeout = Duration::from_secs(20);
-                            return Ok(WebexEventStream {
-                                ws_stream,
-                                timeout,
-                                is_open: true,
-                            });
-                        }
-                        Err(e) => {
-                            warn!("Failed to connect to {:?}: {:?}", url, e);
-                            continue;
-                        }
-                    };
-                }
-                None => {}
+            if let Some(ws_url) = device.ws_url {
+                let url = match url::Url::parse(ws_url.as_str()) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        warn!("Failed to parse {:?}", e);
+                        continue;
+                    }
+                };
+                debug!("Connecting to {:?}", url);
+                match connect_async(url.clone()).await {
+                    Ok((mut ws_stream, _response)) => {
+                        debug!("Connected to {}", url);
+                        self.ws_auth(&mut ws_stream).await?;
+                        debug!("Authenticated");
+                        let timeout = Duration::from_secs(20);
+                        return Ok(WebexEventStream {
+                            ws_stream,
+                            timeout,
+                            is_open: true,
+                        });
+                    }
+                    Err(e) => {
+                        warn!("Failed to connect to {:?}: {:?}", url, e);
+                        continue;
+                    }
+                };
             }
         }
 
@@ -269,20 +272,22 @@ impl Webex {
 
         let url = url::Url::parse(ws_url.as_str())
             .map_err(|e| Into::<Error>::into(format!("Unable to parse WS URL {}", e)))?;
-        debug!("Connecting to {:?}", url);
+        debug!("Connecting to #2 {:?}", url);
 
-        let (mut ws_stream, _response) = connect_async(url.clone())
-            .await
-            .map_err(|e| Into::<Error>::into(format!("connecting to {}, {}", url, e)))?;
-        debug!("Connected to {}", url);
-        self.ws_auth(&mut ws_stream).await?;
+        match connect_async(url.clone()).await {
+            Ok((mut ws_stream, _response)) => {
+                debug!("Connected to {}", url);
+                self.ws_auth(&mut ws_stream).await?;
 
-        let timeout = Duration::from_secs(20);
-        Ok(WebexEventStream {
-            ws_stream,
-            timeout,
-            is_open: true,
-        })
+                let timeout = Duration::from_secs(20);
+                Ok(WebexEventStream {
+                    ws_stream,
+                    timeout,
+                    is_open: true,
+                })
+            }
+            Err(e) => Err(Into::<Error>::into(format!("connecting to {}, {}", url, e))),
+        }
     }
 
     /// Get attachment action
@@ -294,7 +299,15 @@ impl Webex {
     /// Retrieves the attachment for the given ID.  This can be used to
     /// retrieve data from an AdaptiveCard submission
     pub async fn get_attachment_action(&self, id: &str) -> Result<types::AttachmentAction, Error> {
-        let rest_method = format!("attachment/actions/{}", id);
+        let rest_method = match Uuid::parse_str(id) {
+            Ok(_) => format!(
+                "attachment/actions/{}",
+                base64::encode(format!("ciscospark://us/ATTACHMENT_ACTION/{}", id))
+            ),
+            Err(_) => {
+                format!("attachment/actions/{}", id)
+            }
+        };
         self.api_get(rest_method.as_str()).await
     }
 
@@ -312,7 +325,15 @@ impl Webex {
     /// Get a message by ID (note: UUIDs no longer supported, if you have a UUID
     /// message, please use get_message_with_cluster(id, cluster) instead - "us" is default.
     pub async fn get_message(&self, id: &str) -> Result<types::Message, Error> {
-        let rest_method = format!("messages/{}", id);
+        let rest_method = match Uuid::parse_str(id) {
+            Ok(_) => format!(
+                "messages/{}",
+                base64::encode(format!("ciscospark://us/MESSAGE/{}", id))
+            ),
+            Err(_) => {
+                format!("messages/{}", id)
+            }
+        };
         self.api_get(rest_method.as_str()).await
     }
 
@@ -333,7 +354,15 @@ impl Webex {
 
     /// Get available room
     pub async fn get_room(&self, id: &str) -> Result<types::Room, Error> {
-        let rest_method = format!("rooms/{}", id);
+        let rest_method = match Uuid::parse_str(id) {
+            Ok(_) => format!(
+                "rooms/{}",
+                base64::encode(format!("ciscospark://us/ROOM/{}", id))
+            ),
+            Err(_) => {
+                format!("rooms/{}", id)
+            }
+        };
         let room_reply: Result<types::Room, _> = self.api_get(rest_method.as_str()).await;
         match room_reply {
             Err(e) => Err(Error::with_chain(e, "room failed: ")),
@@ -343,20 +372,18 @@ impl Webex {
 
     /// Get information about person
     pub async fn get_person(&self, id: &str) -> Result<types::Person, Error> {
-        let rest_method = format!("people/{}", id);
+        let rest_method = match Uuid::parse_str(id) {
+            Ok(_) => format!(
+                "people/{}",
+                base64::encode(format!("ciscospark://us/PEOPLE/{}", id))
+            ),
+            Err(_) => {
+                format!("people/{}", id)
+            }
+        };
         let people_reply: Result<types::Person, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
             Err(e) => Err(Error::with_chain(e, "people failed: ")),
-            Ok(pr) => Ok(pr),
-        }
-    }
-
-    /// Get information about attachment action
-    pub async fn get_action(&self, id: &str) -> Result<types::Action, Error> {
-        let rest_method = format!("attachment/actions/{}", id);
-        let people_reply: Result<types::Action, _> = self.api_get(rest_method.as_str()).await;
-        match people_reply {
-            Err(e) => Err(Error::with_chain(e, "action failed: ")),
             Ok(pr) => Ok(pr),
         }
     }
@@ -376,7 +403,7 @@ impl Webex {
         self.rest_api("GET", rest_method, body).await
     }
 
-    async fn api_delete<T: DeserializeOwned>(&self, rest_method: &str) -> Result<T, Error> {
+    async fn api_delete(&self, rest_method: &str) -> Result<(), Error> {
         let body: Option<String> = None;
         self.rest_api("DELETE", rest_method, body).await
     }
@@ -435,26 +462,38 @@ impl Webex {
         let req = builder.body(body).expect("request builder");
         match self.client.request(req).await {
             Ok(mut resp) => {
-                if resp.status() == hyper::StatusCode::LOCKED
-                    || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS
-                {
-                    return Err(ErrorKind::Limited(
-                        resp.status(),
-                        match resp.headers().get("Retry-After") {
-                            None => None,
-                            Some(timeout) => match timeout.to_str() {
-                                Ok(time) => match time.parse::<i64>() {
-                                    Ok(t) => Some(t),
-                                    Err(_) => None,
+                if !resp.status().is_success() {
+                    if resp.status() == hyper::StatusCode::LOCKED
+                        || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS
+                    {
+                        warn!("Limited");
+                        return Err(ErrorKind::Limited(
+                            resp.status(),
+                            match resp.headers().get("Retry-After") {
+                                None => None,
+                                Some(timeout) => match timeout.to_str() {
+                                    Ok(time) => match time.parse::<i64>() {
+                                        Ok(t) => Some(t),
+                                        Err(_) => None,
+                                    },
+                                    Err(e) => {
+                                        debug!("Unable to parse retry-after value: {}", e);
+                                        None
+                                    }
                                 },
-                                Err(e) => {
-                                    debug!("Unable to parse retry-after value: {}", e);
-                                    None
-                                }
                             },
-                        },
-                    )
-                    .into());
+                        )
+                        .into());
+                    }
+                    let mut reply = String::new();
+                    while let Some(chunk) = resp.body_mut().data().await {
+                        use std::str;
+
+                        let chunk = chunk.unwrap();
+                        let strchunk = str::from_utf8(&chunk).unwrap();
+                        reply.push_str(strchunk);
+                    }
+                    return Err(ErrorKind::StatusText(resp.status(), reply).into());
                 }
                 let mut reply = String::new();
                 while let Some(chunk) = resp.body_mut().data().await {
@@ -463,9 +502,6 @@ impl Webex {
                     let chunk = chunk?;
                     let strchunk = str::from_utf8(&chunk).unwrap();
                     reply.push_str(strchunk);
-                }
-                if !resp.status().is_success() {
-                    return Err(ErrorKind::StatusText(resp.status(), reply).into());
                 }
                 Ok(reply)
             }
@@ -511,7 +547,10 @@ impl Webex {
         self.api_post("devices", self.device.clone()).await
     }
 
-    async fn ws_auth(&self, ws_stream: &mut WStream) -> Result<(), Error> {
+    async fn ws_auth(
+        &self,
+        ws_stream: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
+    ) -> Result<(), Error> {
         /*
          * Authenticate to the stream
          */
@@ -552,8 +591,8 @@ impl Webex {
     }
 }
 
-impl From<&types::Action> for types::MessageOut {
-    fn from(action: &types::Action) -> Self {
+impl From<&types::AttachmentAction> for types::MessageOut {
+    fn from(action: &types::AttachmentAction) -> Self {
         types::MessageOut {
             room_id: action.room_id.clone(),
             ..Default::default()

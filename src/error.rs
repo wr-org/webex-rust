@@ -30,7 +30,7 @@ error_chain! {
             display("{} Retry in: '{:?}'", s, t)
         }
 
-        Tungstenite(e: tungstenite::Error, t: String) {
+        Tungstenite(e: tokio_tungstenite::tungstenite::Error, t: String) {
             description("Failed WS")
             display("{} {}", e, t)
         }

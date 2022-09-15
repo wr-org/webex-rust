@@ -204,7 +204,7 @@ pub struct DeviceData {
     pub org_id: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceFeatures {
@@ -216,7 +216,7 @@ pub struct DeviceFeatures {
     pub user: Option<Vec<DeviceFeatureData>>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceFeatureData {
@@ -234,7 +234,7 @@ pub struct DeviceFeatureData {
     pub deleted_time: Option<i64>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceCapabilities {
@@ -244,7 +244,7 @@ pub struct DeviceCapabilities {
     pub sdp_supported: bool,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(missing_docs)]
 pub struct DeviceSettings {
@@ -430,21 +430,23 @@ pub struct AttachmentAction {
     /// A unique identifier for the action.
     pub id: String,
     /// The type of action performed.
-    #[serde(rename = "type")]
-    pub action_type: String,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub action_type: Option<String>,
     /// The parent message the attachment action was performed on.
-    #[serde(rename = "messageId")]
-    pub message_id: String,
+    #[serde(rename = "messageId", skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
     /// The action's inputs.
-    pub inputs: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inputs: Option<HashMap<String, String>>,
     /// The ID of the person who performed the action.
-    #[serde(rename = "personId")]
-    pub person_id: String,
+    #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
     /// The ID of the room the action was performed within.
-    #[serde(rename = "roomId")]
-    pub room_id: String,
+    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
+    pub room_id: Option<String>,
     /// The date and time the action was created.
-    pub created: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
 }
 
 /// Person information
