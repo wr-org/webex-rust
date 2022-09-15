@@ -1,6 +1,5 @@
 use hyper::{Error as HyperError, StatusCode};
 use serde_json::error::Error as SerdeError;
-use tungstenite;
 
 error_chain! {
     foreign_links {

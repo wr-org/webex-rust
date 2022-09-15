@@ -34,11 +34,9 @@ pub mod error;
 pub mod types;
 
 use error::{Error, ErrorKind};
-use uuid::Uuid;
 
 use crate::adaptive_card::AdaptiveCard;
 use crate::types::Attachment;
-use futures::{SinkExt, StreamExt};
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
@@ -46,12 +44,7 @@ use log::{debug, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::net::TcpStream;
-use tokio_tls::TlsStream;
-use tokio_tungstenite::stream::Stream;
-use tokio_tungstenite::{connect_async, WebSocketStream};
-use tungstenite::protocol::Message;
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream, tungstenite::Message};
 use uuid::Uuid;
 
 /*
