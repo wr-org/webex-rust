@@ -4,6 +4,7 @@
 use crate::adaptive_card::AdaptiveCard;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Webex Teams room information
 #[derive(Deserialize, Serialize, Debug)]
@@ -377,7 +378,12 @@ impl MessageId {
     }
     pub fn new_with_cluster(id: String, cluster: Option<String>) -> Self {
         let cluster = cluster.as_deref().unwrap_or("us");
-        Self { id: base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)) }
+
+        let id = match Uuid::parse_str(&id) {
+            Ok(_) => base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
+            Err(_) => id,
+        };
+        Self { id }
     }
     pub fn id(&self) -> String {
         self.id.clone()
