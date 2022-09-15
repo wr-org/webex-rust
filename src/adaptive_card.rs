@@ -495,17 +495,7 @@ impl CardElement {
 
     /// Add element to Container
     pub fn add_element<T: Into<CardElement>>(&mut self, element: T) -> Self {
-        if let CardElement::Container {
-            items,
-            select_action: _,
-            style: _,
-            vertical_content_alignment: _,
-            height: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::Container { items, .. } = self {
             items.push(element.into())
         }
         self.into()
@@ -513,17 +503,7 @@ impl CardElement {
 
     /// Set Container Style
     pub fn set_container_style(&mut self, s: ContainerStyle) -> Self {
-        if let CardElement::Container {
-            items: _,
-            select_action: _,
-            style,
-            vertical_content_alignment: _,
-            height: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::Container { style, .. } = self {
             *style = Some(s);
         }
         self.into()
@@ -546,19 +526,7 @@ impl CardElement {
 
     /// Set Text Input Multiline
     pub fn set_multiline(&mut self, s: bool) -> Self {
-        if let CardElement::InputText {
-            id: _,
-            placeholder: _,
-            is_multiline,
-            max_length: _,
-            style: _,
-            inline_action: _,
-            value: _,
-            height: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::InputText { is_multiline, .. } = self {
             *is_multiline = Some(s);
         }
         self.into()
@@ -594,17 +562,7 @@ impl CardElement {
 
     /// Set choiceSet Style
     pub fn set_style(&mut self, s: ChoiceInputStyle) -> Self {
-        if let CardElement::InputChoiceSet {
-            choices: _,
-            id: _,
-            is_multi_select: _,
-            style,
-            value: _,
-            height: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::InputChoiceSet { style, .. } = self {
             *style = Some(s);
         }
         self.into()
@@ -612,17 +570,7 @@ impl CardElement {
 
     /// Set title Style
     pub fn set_title(&mut self, s: String) -> Self {
-        if let CardElement::InputToggle {
-            id: _id,
-            value: _value,
-            value_off: _value_off,
-            value_on: _value_on,
-            height: _height,
-            separator: _separator,
-            spacing: _spacing,
-            title,
-        } = self
-        {
+        if let CardElement::InputToggle { title, .. } = self {
             *title = Some(s);
         }
         self.into()
@@ -631,14 +579,7 @@ impl CardElement {
     /// Set choiceSet Style
     pub fn set_multiselect(&mut self, b: bool) -> Self {
         if let CardElement::InputChoiceSet {
-            choices: _,
-            id: _,
-            is_multi_select,
-            style: _,
-            value: _,
-            height: _,
-            separator: _,
-            spacing: _,
+            is_multi_select, ..
         } = self
         {
             *is_multi_select = Some(b);
@@ -671,22 +612,7 @@ impl CardElement {
 
     /// Set Text Weight
     pub fn set_weight(&mut self, w: Weight) -> Self {
-        if let CardElement::TextBlock {
-            text: _,
-            wrap: _,
-            color: _,
-            horizontal_alignment: _,
-            is_subtle: _,
-            max_lines: _,
-            font_type: _,
-            size: _,
-            weight,
-            height: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::TextBlock { weight, .. } = self {
             *weight = Some(w);
         }
         self.into()
@@ -694,22 +620,7 @@ impl CardElement {
 
     /// Set Text Font Type
     pub fn set_font(&mut self, f: FontType) -> Self {
-        if let CardElement::TextBlock {
-            text: _,
-            wrap: _,
-            color: _,
-            horizontal_alignment: _,
-            is_subtle: _,
-            max_lines: _,
-            font_type,
-            size: _,
-            weight: _,
-            height: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::TextBlock { font_type, .. } = self {
             *font_type = Some(f);
         }
         self.into()
@@ -717,22 +628,7 @@ impl CardElement {
 
     /// Set Text Size
     pub fn set_size(&mut self, s: Size) -> Self {
-        if let CardElement::TextBlock {
-            text: _,
-            wrap: _,
-            color: _,
-            horizontal_alignment: _,
-            is_subtle: _,
-            font_type: _,
-            max_lines: _,
-            size,
-            weight: _,
-            height: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::TextBlock { size, .. } = self {
             *size = Some(s);
         }
         self.into()
@@ -740,22 +636,7 @@ impl CardElement {
 
     /// Set Text Color
     pub fn set_color(&mut self, c: Color) -> Self {
-        if let CardElement::TextBlock {
-            text: _,
-            wrap: _,
-            color,
-            horizontal_alignment: _,
-            font_type: _,
-            is_subtle: _,
-            max_lines: _,
-            size: _,
-            weight: _,
-            height: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::TextBlock { color, .. } = self {
             *color = Some(c);
         }
         self.into()
@@ -763,22 +644,7 @@ impl CardElement {
 
     /// Set Text wrap
     pub fn set_wrap(&mut self, w: bool) -> Self {
-        if let CardElement::TextBlock {
-            text: _,
-            wrap,
-            color: _,
-            horizontal_alignment: _,
-            font_type: _,
-            is_subtle: _,
-            max_lines: _,
-            size: _,
-            weight: _,
-            height: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::TextBlock { wrap, .. } = self {
             *wrap = Some(w);
         }
         self.into()
@@ -786,22 +652,7 @@ impl CardElement {
 
     /// Set Text subtle
     pub fn set_subtle(&mut self, s: bool) -> Self {
-        if let CardElement::TextBlock {
-            text: _,
-            wrap: _,
-            color: _,
-            horizontal_alignment: _,
-            font_type: _,
-            is_subtle,
-            max_lines: _,
-            size: _,
-            weight: _,
-            height: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
+        if let CardElement::TextBlock { is_subtle, .. } = self {
             *is_subtle = Some(s);
         }
         self.into()
@@ -839,26 +690,11 @@ impl CardElement {
     /// Add fact to factSet
     pub fn add_key_value<T: Into<String>, S: Into<String>>(&mut self, title: T, value: S) -> Self {
         match self {
-            CardElement::FactSet {
-                facts,
-                height: _,
-                id: _,
-                separator: _,
-                spacing: _,
-            } => facts.push(Fact {
+            CardElement::FactSet { facts, .. } => facts.push(Fact {
                 title: title.into(),
                 value: value.into(),
             }),
-            CardElement::InputChoiceSet {
-                choices,
-                id: _,
-                is_multi_select: _,
-                style: _,
-                value: _,
-                height: _,
-                separator: _,
-                spacing: _,
-            } => choices.push(Choice {
+            CardElement::InputChoiceSet { choices, .. } => choices.push(Choice {
                 title: title.into(),
                 value: value.into(),
             }),
@@ -880,15 +716,8 @@ impl CardElement {
 
     /// Add column to columnSet
     pub fn add_column(&mut self, column: Column) -> Self {
-        if let CardElement::ColumnSet {
-            columns,
-            select_action: _,
-            id: _,
-            separator: _,
-            spacing: _,
-        } = self
-        {
-            columns.push(column)
+        if let CardElement::ColumnSet { columns, .. } = self {
+            columns.push(column);
         }
         self.into()
     }
@@ -896,93 +725,25 @@ impl CardElement {
     /// Set Separator
     pub fn set_separator(&mut self, s: bool) -> Self {
         match self {
-            CardElement::TextBlock {
-                text: _,
-                wrap: _,
-                color: _,
-                horizontal_alignment: _,
-                font_type: _,
-                is_subtle: _,
-                max_lines: _,
-                size: _,
-                weight: _,
-                height: _,
-                id: _,
-                separator,
-                spacing: _,
-            } => {
+            CardElement::TextBlock { separator, .. } => {
                 *separator = Some(s);
             }
-            CardElement::FactSet {
-                facts: _,
-                height: _,
-                id: _,
-                separator,
-                spacing: _,
-            } => {
+            CardElement::FactSet { separator, .. } => {
                 *separator = Some(s);
             }
-            CardElement::ColumnSet {
-                columns: _,
-                select_action: _,
-                id: _,
-                separator,
-                spacing: _,
-            } => {
+            CardElement::ColumnSet { separator, .. } => {
                 *separator = Some(s);
             }
-            CardElement::Image {
-                url: _,
-                alt_text: _,
-                background_color: _,
-                width: _,
-                height: _,
-                horizontal_alignment: _,
-                select_action: _,
-                size: _,
-                style: _,
-                id: _,
-                separator,
-                spacing: _,
-            } => {
+            CardElement::Image { separator, .. } => {
                 *separator = Some(s);
             }
-            CardElement::InputChoiceSet {
-                choices: _,
-                id: _,
-                is_multi_select: _,
-                style: _,
-                value: _,
-                height: _,
-                separator,
-                spacing: _,
-            } => {
+            CardElement::InputChoiceSet { separator, .. } => {
                 *separator = Some(s);
             }
-            CardElement::InputText {
-                id: _,
-                placeholder: _,
-                is_multiline: _,
-                max_length: _,
-                style: _,
-                inline_action: _,
-                value: _,
-                height: _,
-                separator,
-                spacing: _,
-            } => {
+            CardElement::InputText { separator, .. } => {
                 *separator = Some(s);
             }
-            CardElement::InputToggle {
-                id: _id,
-                value: _value,
-                value_off: _value_off,
-                value_on: _value_on,
-                height: _height,
-                separator,
-                spacing: _spacing,
-                title: _title,
-            } => {
+            CardElement::InputToggle { separator, .. } => {
                 *separator = Some(s);
             }
             _ => {}
@@ -993,81 +754,22 @@ impl CardElement {
     /// Set Spacing
     pub fn set_spacing(&mut self, s: Spacing) -> Self {
         match self {
-            CardElement::TextBlock {
-                text: _,
-                wrap: _,
-                color: _,
-                horizontal_alignment: _,
-                font_type: _,
-                is_subtle: _,
-                max_lines: _,
-                size: _,
-                weight: _,
-                height: _,
-                id: _,
-                separator: _,
-                spacing,
-            } => {
+            CardElement::TextBlock { spacing, .. } => {
                 *spacing = Some(s);
             }
-            CardElement::FactSet {
-                facts: _,
-                height: _,
-                id: _,
-                separator: _,
-                spacing,
-            } => {
+            CardElement::FactSet { spacing, .. } => {
                 *spacing = Some(s);
             }
-            CardElement::ColumnSet {
-                columns: _,
-                select_action: _,
-                id: _,
-                separator: _,
-                spacing,
-            } => {
+            CardElement::ColumnSet { spacing, .. } => {
                 *spacing = Some(s);
             }
-            CardElement::Image {
-                url: _,
-                alt_text: _,
-                background_color: _,
-                width: _,
-                height: _,
-                horizontal_alignment: _,
-                select_action: _,
-                size: _,
-                style: _,
-                id: _,
-                separator: _,
-                spacing,
-            } => {
+            CardElement::Image { spacing, .. } => {
                 *spacing = Some(s);
             }
-            CardElement::InputChoiceSet {
-                choices: _,
-                id: _,
-                is_multi_select: _,
-                style: _,
-                value: _,
-                height: _,
-                separator: _,
-                spacing,
-            } => {
+            CardElement::InputChoiceSet { spacing, .. } => {
                 *spacing = Some(s);
             }
-            CardElement::InputText {
-                id: _,
-                placeholder: _,
-                is_multiline: _,
-                max_length: _,
-                style: _,
-                inline_action: _,
-                value: _,
-                height: _,
-                separator: _,
-                spacing,
-            } => {
+            CardElement::InputText { spacing, .. } => {
                 *spacing = Some(s);
             }
             _ => {}
@@ -1085,15 +787,15 @@ impl CardElement {
 
     /// Add action to actionSet
     pub fn add_action_to_set(&mut self, action: Action) -> Self {
-        if let CardElement::ActionSet { actions, height: _ } = self {
-            actions.push(action)
+        if let CardElement::ActionSet { actions, .. } = self {
+            actions.push(action);
         }
         self.into()
     }
 }
 
 /// Defines a container that is part of a ColumnSet.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Column {
     /// The card elements to render inside the Column.
     items: Vec<CardElement>,
@@ -1132,12 +834,6 @@ impl From<&Column> for Column {
 impl From<&mut Column> for Column {
     fn from(item: &mut Column) -> Self {
         item.clone()
-    }
-}
-
-impl Default for Column {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

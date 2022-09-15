@@ -4,6 +4,7 @@
 use crate::adaptive_card::AdaptiveCard;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Webex Teams room information
 #[derive(Deserialize, Serialize, Debug)]
@@ -121,6 +122,9 @@ pub struct Message {
     /// The date and time the message was created.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
+    /// The date and time the message was updated, if it was edited.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
 }
 
 /// API Message reply
@@ -300,13 +304,13 @@ pub struct Actor {
     #[serde(rename = "displayName")]
     pub display_name: String,
     #[serde(rename = "orgId")]
-    pub org_id: String,
+    pub org_id: Option<String>,
     #[serde(rename = "emailAddress")]
-    pub email_address: String,
+    pub email_address: Option<String>,
     #[serde(rename = "entryUUID")]
     pub entry_uuid: String,
     #[serde(rename = "type")]
-    pub actor_type: String,
+    pub actor_type: Option<String>,
 }
 
 #[allow(missing_docs)]
@@ -344,6 +348,49 @@ pub struct Activity {
 }
 
 #[allow(missing_docs)]
+impl Activity {
+    pub fn get_message_id(&self) -> MessageId {
+        if let Some(target) = &self.target {
+            MessageId { id: target.global_id.clone() }
+        } else {
+            MessageId::new(self.id.clone())
+        }
+    }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone)]
+pub struct MessageId {
+    id: String,
+}
+
+#[allow(missing_docs)]
+impl From<String> for MessageId {
+    fn from(s: String) -> MessageId {
+        MessageId::new(s)
+    }
+}
+
+#[allow(missing_docs)]
+impl MessageId {
+    pub fn new(id: String) -> Self {
+        Self::new_with_cluster(id, None)
+    }
+    pub fn new_with_cluster(id: String, cluster: Option<String>) -> Self {
+        let cluster = cluster.as_deref().unwrap_or("us");
+
+        let id = match Uuid::parse_str(&id) {
+            Ok(_) => base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
+            Err(_) => id,
+        };
+        Self { id }
+    }
+    pub fn id(&self) -> String {
+        self.id.clone()
+    }
+}
+
+#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct VectorCounters {
     #[serde(rename = "sourceDC")]
@@ -361,6 +408,8 @@ pub struct Target {
     pub participants: MiscItems,
     pub activities: MiscItems,
     pub tags: Vec<String>,
+    #[serde(rename = "globalId")]
+    pub global_id: String,
 }
 
 #[allow(missing_docs)]

@@ -40,12 +40,11 @@ use crate::types::Attachment;
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use log::{debug, warn};
+use log::{debug, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
 /*
@@ -93,7 +92,13 @@ impl WebexEventStream {
 
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
-                Err(_) => return Err(format!("no activity for at least {:?}", self.timeout).into()),
+                Err(_) => {
+                    // This does not seem to be recoverable, or at least there are conditions under
+                    // which it does not recover. Indicate that the connection is closed and a new
+                    // one will have to be opened.
+                    self.is_open = false;
+                    return Err(format!("no activity for at least {:?}", self.timeout).into());
+                }
                 // Didn't time out
                 Ok(next_result) => match next_result {
                     Some(msg) => match msg {
@@ -109,6 +114,11 @@ impl WebexEventStream {
                                 }
                                 Err(e) => return Err(e),
                             };
+                        }
+                        Err(tungstenite::error::Error::Protocol(e)) => {
+                            // Protocol error probably requires a connection reset
+                            self.is_open = false;
+                            return Err(e.to_string().into());
                         }
                         Err(e) => return Err(e.to_string().into()),
                     },
@@ -138,7 +148,7 @@ impl WebexEventStream {
                 Ok(None)
             }
             Message::Ping(_) => {
-                debug!("Ping!");
+                trace!("Ping!");
                 Ok(None)
             }
             Message::Close(t) => {
@@ -294,17 +304,12 @@ impl Webex {
         self.api_get(rest_method.as_str()).await
     }
 
-    /// Get a message by ID
-    pub async fn get_message(&self, id: &str) -> Result<types::Message, Error> {
-        let rest_method = match Uuid::parse_str(id) {
-            Ok(_) => format!(
-                "messages/{}",
-                base64::encode(format!("ciscospark://us/MESSAGE/{}", id))
-            ),
-            Err(_) => {
-                format!("messages/{}", id)
-            }
-        };
+    /// Get a message by ID (note: UUIDs no longer supported)
+    /// If you have a UUID, please use `MessageId::new(id)` or `MessageId::from(id)`.
+    /// If you have an `Activity`, use `Activity::get_message_id()`.
+    pub async fn get_message(&self, id: &types::MessageId) -> Result<types::Message, Error> {
+        //self.get_message_with_cluster(id, "us").await
+        let rest_method = format!("messages/{}", id.id());
         self.api_get(rest_method.as_str()).await
     }
 
@@ -470,7 +475,7 @@ impl Webex {
                 while let Some(chunk) = resp.body_mut().data().await {
                     use std::str;
 
-                    let chunk = chunk.unwrap();
+                    let chunk = chunk?;
                     let strchunk = str::from_utf8(&chunk).unwrap();
                     reply.push_str(strchunk);
                 }
@@ -494,7 +499,7 @@ impl Webex {
                 }
             },
             Err(e) => match e {
-                Error(ErrorKind::Status(s), _) => {
+                Error(ErrorKind::Status(s), _) | Error(ErrorKind::StatusText(s, _), _) => {
                     if s == hyper::StatusCode::NOT_FOUND {
                         debug!("No devices found, creating new one");
                         match self.setup_devices().await {
@@ -537,7 +542,24 @@ impl Webex {
             .send(Message::Text(serde_json::to_string(&auth).unwrap()))
             .await
         {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                /*
+                 * The next thing back should be a pong
+                 */
+                match ws_stream.next().await {
+                    Some(msg) => match msg {
+                        Ok(msg) => match msg {
+                            Message::Ping(_) | Message::Pong(_) => {
+                                debug!("Authentication succeeded");
+                                Ok(())
+                            }
+                            _ => Err(format!("Received {:?} in reply to auth message", msg).into()),
+                        },
+                        Err(e) => Err(format!("Received error from websocket: {}", e).into()),
+                    },
+                    None => Err("Websocket closed".to_string().into()),
+                }
+            }
             Err(e) => {
                 Err(ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
             }
@@ -596,3 +618,4 @@ impl types::MessageOut {
         self
     }
 }
+
