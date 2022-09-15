@@ -349,9 +349,12 @@ pub struct Activity {
 
 #[allow(missing_docs)]
 impl Activity {
+    #[must_use]
     pub fn get_message_id(&self) -> MessageId {
         if let Some(target) = &self.target {
-            MessageId { id: target.global_id.clone() }
+            MessageId {
+                id: target.global_id.clone(),
+            }
         } else {
             MessageId::new(self.id.clone())
         }
@@ -373,9 +376,11 @@ impl From<String> for MessageId {
 
 #[allow(missing_docs)]
 impl MessageId {
+    #[must_use]
     pub fn new(id: String) -> Self {
         Self::new_with_cluster(id, None)
     }
+    #[must_use]
     pub fn new_with_cluster(id: String, cluster: Option<String>) -> Self {
         let cluster = cluster.as_deref().unwrap_or("us");
 
@@ -385,6 +390,7 @@ impl MessageId {
         };
         Self { id }
     }
+    #[must_use]
     pub fn id(&self) -> String {
         self.id.clone()
     }

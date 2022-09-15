@@ -43,6 +43,7 @@ pub struct AdaptiveCard {
 
 impl AdaptiveCard {
     /// Create new adaptive card with mandatory defaults
+    #[must_use]
     pub fn new() -> Self {
         AdaptiveCard {
             card_type: "AdaptiveCard".to_string(),
@@ -61,7 +62,7 @@ impl AdaptiveCard {
     ///
     /// # Arguments
     ///
-    /// * `card` - CardElement to add
+    /// * `card` - `CardElement` to add
     pub fn add_body<T: Into<CardElement>>(&mut self, card: T) -> Self {
         self.body = Some(match self.body.clone() {
             None => {
@@ -480,6 +481,7 @@ impl From<&mut CardElement> for CardElement {
 /// Functions for Card Element
 impl CardElement {
     /// Create container
+    #[must_use]
     pub fn container() -> Self {
         CardElement::Container {
             items: vec![],
@@ -659,6 +661,7 @@ impl CardElement {
     }
 
     /// Create factSet
+    #[must_use]
     pub fn fact_set() -> CardElement {
         CardElement::FactSet {
             facts: vec![],
@@ -704,6 +707,7 @@ impl CardElement {
     }
 
     /// Create columnSet
+    #[must_use]
     pub fn column_set() -> CardElement {
         CardElement::ColumnSet {
             columns: vec![],
@@ -778,6 +782,7 @@ impl CardElement {
     }
 
     /// Create actionSet
+    #[must_use]
     pub fn action_set() -> CardElement {
         CardElement::ActionSet {
             actions: vec![],
@@ -794,7 +799,7 @@ impl CardElement {
     }
 }
 
-/// Defines a container that is part of a ColumnSet.
+/// Defines a container that is part of a `ColumnSet`.
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Column {
     /// The card elements to render inside the Column.
@@ -839,6 +844,7 @@ impl From<&mut Column> for Column {
 
 impl Column {
     /// Creates new Column
+    #[must_use]
     pub fn new() -> Self {
         Column {
             items: vec![],
@@ -864,7 +870,7 @@ impl Column {
         self.into()
     }
 
-    /// Sets VerticalContentAlignment
+    /// Sets `VerticalContentAlignment`
     pub fn set_vertical_alignment(&mut self, s: VerticalContentAlignment) -> Self {
         self.vertical_content_alignment = Some(s);
         self.into()
@@ -877,7 +883,7 @@ impl Column {
     }
 }
 
-/// Describes a Fact in a FactSet as a key/value pair.
+/// Describes a Fact in a `FactSet` as a key/value pair.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Fact {
     /// The title of the fact.
@@ -1070,7 +1076,7 @@ pub enum ActionStyle {
     Destructive,
 }
 
-/// Describes a choice for use in a ChoiceSet.
+/// Describes a choice for use in a `ChoiceSet`.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Choice {
     /// Text to display.

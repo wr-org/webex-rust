@@ -170,6 +170,7 @@ impl WebexEventStream {
 
 impl Webex {
     /// Constructs a new Webex Teams context
+    #[must_use]
     pub fn new(token: &str) -> Self {
         let https = HttpsConnector::new();
         let client = Client::builder().build::<_, hyper::Body>(https);
@@ -290,7 +291,7 @@ impl Webex {
     /// * `id` - attachment ID
     ///
     /// Retrieves the attachment for the given ID.  This can be used to
-    /// retrieve data from an AdaptiveCard submission
+    /// retrieve data from an `AdaptiveCard` submission
     pub async fn get_attachment_action(&self, id: &str) -> Result<types::AttachmentAction, Error> {
         let rest_method = match Uuid::parse_str(id) {
             Ok(_) => format!(
@@ -432,45 +433,12 @@ impl Webex {
             builder = builder.header("Content-Type", "application/json");
         }
         let body = match body {
-            Some(obj) => Body::from(serde_json::to_string(&obj).unwrap()),
+            Some(obj) => Body::from(serde_json::to_string(&obj)?),
             None => Body::empty(),
         };
         let req = builder.body(body).expect("request builder");
         match self.client.request(req).await {
             Ok(mut resp) => {
-                if !resp.status().is_success() {
-                    if resp.status() == hyper::StatusCode::LOCKED
-                        || resp.status() == hyper::StatusCode::TOO_MANY_REQUESTS
-                    {
-                        warn!("Limited");
-                        return Err(ErrorKind::Limited(
-                            resp.status(),
-                            match resp.headers().get("Retry-After") {
-                                None => None,
-                                Some(timeout) => match timeout.to_str() {
-                                    Ok(time) => match time.parse::<i64>() {
-                                        Ok(t) => Some(t),
-                                        Err(_) => None,
-                                    },
-                                    Err(e) => {
-                                        debug!("Unable to parse retry-after value: {}", e);
-                                        None
-                                    }
-                                },
-                            },
-                        )
-                        .into());
-                    }
-                    let mut reply = String::new();
-                    while let Some(chunk) = resp.body_mut().data().await {
-                        use std::str;
-
-                        let chunk = chunk.unwrap();
-                        let strchunk = str::from_utf8(&chunk).unwrap();
-                        reply.push_str(strchunk);
-                    }
-                    return Err(ErrorKind::StatusText(resp.status(), reply).into());
-                }
                 let mut reply = String::new();
                 while let Some(chunk) = resp.body_mut().data().await {
                     use std::str;
@@ -479,7 +447,21 @@ impl Webex {
                     let strchunk = str::from_utf8(&chunk).unwrap();
                     reply.push_str(strchunk);
                 }
-                Ok(reply)
+                match resp.status() {
+                    hyper::StatusCode::LOCKED | hyper::StatusCode::TOO_MANY_REQUESTS => {
+                        warn!("Limited");
+                        let retry_after = resp
+                            .headers()
+                            .get("Retry-After")
+                            .and_then(|s| s.to_str().ok())
+                            .and_then(|t| t.parse::<i64>().ok());
+                        Err(ErrorKind::Limited(resp.status(), retry_after).into())
+                    }
+                    status if !status.is_success() => {
+                        Err(ErrorKind::StatusText(resp.status(), reply).into())
+                    }
+                    _ => Ok(reply),
+                }
             }
             Err(e) => Err(Error::with_chain(e, "request failed")),
         }
@@ -499,7 +481,7 @@ impl Webex {
                 }
             },
             Err(e) => match e {
-                Error(ErrorKind::Status(s), _) | Error(ErrorKind::StatusText(s, _), _) => {
+                Error(ErrorKind::Status(s) | ErrorKind::StatusText(s, _), _) => {
                     if s == hyper::StatusCode::NOT_FOUND {
                         debug!("No devices found, creating new one");
                         match self.setup_devices().await {
@@ -601,6 +583,7 @@ impl types::MessageOut {
     ///
     /// Use `from_msg` to create a reply from a received message.
     #[deprecated(since = "0.2.0", note = "Please use the from instead")]
+    #[must_use]
     pub fn from_msg(msg: &types::Message) -> Self {
         Self::from(msg)
     }
@@ -618,4 +601,3 @@ impl types::MessageOut {
         self
     }
 }
-
