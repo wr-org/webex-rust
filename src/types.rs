@@ -351,13 +351,7 @@ pub struct Activity {
 impl Activity {
     #[must_use]
     pub fn get_message_id(&self) -> MessageId {
-        if let Some(target) = &self.target {
-            MessageId {
-                id: target.global_id.clone(),
-            }
-        } else {
-            MessageId::new(self.id.clone())
-        }
+        MessageId::new_with_cluster(self.id.clone(), self.target.as_ref().map(Target::get_cluster))
     }
 }
 
@@ -388,6 +382,7 @@ impl MessageId {
             Ok(_) => base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
             Err(_) => id,
         };
+        debug_assert!(String::from_utf8(base64::decode(&id).unwrap()).unwrap().split('/').nth(3).unwrap() == "MESSAGE");
         Self { id }
     }
     #[must_use]
@@ -416,6 +411,22 @@ pub struct Target {
     pub tags: Vec<String>,
     #[serde(rename = "globalId")]
     pub global_id: String,
+}
+
+#[allow(missing_docs)]
+impl Target {
+    /// Turns a `Target` into a cluster - used for message geodata
+    pub(crate) fn get_cluster(&self) -> String {
+        let target_info = String::from_utf8(
+            base64::decode(&self.global_id)
+                .expect("event.data.target.globalId should be a base64 string"),
+        )
+        .expect("decoded globalId should be a valid utf-8 string");
+        let cluster = target_info.split('/').nth(2).expect(
+            "event.data.target.globalId should be in the form ciscospark://[cluster]/[type]/[id]",
+        );
+        cluster.to_string()
+    }
 }
 
 #[allow(missing_docs)]
