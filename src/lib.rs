@@ -86,6 +86,11 @@ impl WebexEventStream {
     /// Get the next event from an event stream
     ///
     /// Returns an event or an error
+    ///
+    /// # Errors
+    /// Returns an error when the underlying stream has a problem, but will
+    /// continue to work on subsequent calls to `next()` - the errors can safely
+    /// be ignored.
     pub async fn next(&mut self) -> Result<types::Event, Error> {
         loop {
             let next = self.ws_stream.next();
@@ -130,17 +135,14 @@ impl WebexEventStream {
 
     async fn handle_message(&mut self, msg: Message) -> Result<Option<types::Event>, Error> {
         match msg {
-            Message::Binary(bytes) => match String::from_utf8(bytes) {
-                Ok(json) => {
-                    let json = json.as_str();
-                    match serde_json::from_str(json) {
-                        Ok(ev) => Ok(Some(ev)),
-                        Err(e) => {
-                            warn!("Couldn't deserialize: {:?}.  Original JSON:\n{}", e, &json);
-                            Err(e.into())
-                        }
+            Message::Binary(bytes) => match std::str::from_utf8(&bytes) {
+                Ok(json) => match serde_json::from_str(json) {
+                    Ok(ev) => Ok(Some(ev)),
+                    Err(e) => {
+                        warn!("Couldn't deserialize: {:?}.  Original JSON:\n{}", e, &json);
+                        Err(e.into())
                     }
-                }
+                },
                 Err(e) => Err(e.into()),
             },
             Message::Text(t) => {
@@ -169,7 +171,9 @@ impl WebexEventStream {
 }
 
 impl Webex {
-    /// Constructs a new Webex Teams context
+    /// Constructs a new Webex Teams context from a token
+    /// Tokens can be obtained when creating a bot, see <https://developer.webex.com/my-apps> for
+    /// more information and to create your own Webex bots.
     #[must_use]
     pub fn new(token: &str) -> Self {
         let https = HttpsConnector::new();
@@ -305,9 +309,17 @@ impl Webex {
         self.api_get(rest_method.as_str()).await
     }
 
-    /// Get a message by ID (note: UUIDs no longer supported)
-    /// If you have a UUID, please use `MessageId::new(id)` or `MessageId::from(id)`.
-    /// If you have an `Activity`, use `Activity::get_message_id()`.
+    /// Get a message by ID
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - a [`types::MessageId`]
+    ///
+    /// If you have a UUID, please use [`types::MessageId::new()`] or [`types::MessageId::from()`].
+    /// If you have an `Activity`, use [`types::Activity::get_message_id()`].
+    ///
+    /// # Errors
+    /// See [Webex::send_message()] errors.
     pub async fn get_message(&self, id: &types::MessageId) -> Result<types::Message, Error> {
         //self.get_message_with_cluster(id, "us").await
         let rest_method = format!("messages/{}", id.id());
@@ -348,6 +360,9 @@ impl Webex {
     }
 
     /// Get information about person
+    ///
+    /// # Errors
+    /// See `send_message`
     pub async fn get_person(&self, id: &str) -> Result<types::Person, Error> {
         let rest_method = match Uuid::parse_str(id) {
             Ok(_) => format!(
@@ -366,6 +381,15 @@ impl Webex {
     }
 
     /// Send a message to a user or room
+    ///
+    /// # Errors
+    /// Types of errors returned:
+    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// value cannot be deserialised. (If this happens, this is a library bug and should be
+    /// reported.)
+    /// * [`ErrorKind::UTF8`] - returned when the requests returns non-UTF8 code.
     pub async fn send_message(&self, message: &types::MessageOut) -> Result<types::Message, Error> {
         self.api_post("messages", &message).await
     }
@@ -444,7 +468,7 @@ impl Webex {
                     use std::str;
 
                     let chunk = chunk?;
-                    let strchunk = str::from_utf8(&chunk).unwrap();
+                    let strchunk = str::from_utf8(&chunk)?;
                     reply.push_str(strchunk);
                 }
                 match resp.status() {
@@ -553,14 +577,14 @@ impl From<&types::AttachmentAction> for types::MessageOut {
     fn from(action: &types::AttachmentAction) -> Self {
         types::MessageOut {
             room_id: action.room_id.clone(),
-            ..Default::default()
+            ..types::MessageOut::default()
         }
     }
 }
 
 impl From<&types::Message> for types::MessageOut {
     fn from(msg: &types::Message) -> Self {
-        let mut new_msg: Self = Default::default();
+        let mut new_msg: Self = types::MessageOut::default();
 
         if msg.room_type == Some("group".to_string()) {
             new_msg.room_id = msg.room_id.clone();

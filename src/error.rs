@@ -5,7 +5,7 @@ error_chain! {
     foreign_links {
         Io(std::io::Error);
         Json(SerdeError);
-        UTF8(std::string::FromUtf8Error);
+        UTF8(std::str::Utf8Error);
         Hyper(HyperError);
     }
     errors {

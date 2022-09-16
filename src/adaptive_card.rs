@@ -36,7 +36,7 @@ pub struct AdaptiveCard {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
     /// The Adaptive Card schema.
-    /// http://adaptivecards.io/schemas/adaptive-card.json
+    /// <http://adaptivecards.io/schemas/adaptive-card.json>
     #[serde(rename = "$schema")]
     pub schema: String,
 }
