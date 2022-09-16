@@ -1,4 +1,6 @@
 #![deny(missing_docs)]
+#![deny(clippy::all, clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)] // TODO remove this
 #![cfg_attr(test, deny(warnings))]
 #![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
 
@@ -108,17 +110,10 @@ impl WebexEventStream {
                 Ok(next_result) => match next_result {
                     Some(msg) => match msg {
                         Ok(msg) => {
-                            match self.handle_message(msg).await {
-                                Ok(maybe_msg) => {
-                                    if let Some(msg) = maybe_msg {
-                                        return Ok(msg);
-                                    } else {
-                                        // Ignore other messages (but they'll reset the timeout)
-                                        continue;
-                                    }
-                                }
-                                Err(e) => return Err(e),
-                            };
+                            if let Some(h_msg) = self.handle_message(msg).await? {
+                                return Ok(h_msg);
+                            }
+                            // `None` messages still reset the timeout (e.g. Ping to keep alive)
                         }
                         Err(tungstenite::error::Error::Protocol(e)) => {
                             // Protocol error probably requires a connection reset
@@ -192,7 +187,7 @@ impl Webex {
                 name: Some("rust-spark-client".to_string()),
                 system_name: Some("rust-spark-client".to_string()),
                 system_version: Some("0.1".to_string()),
-                ..Default::default()
+                ..types::DeviceData::default()
             },
         };
 
@@ -319,7 +314,7 @@ impl Webex {
     /// If you have an `Activity`, use [`types::Activity::get_message_id()`].
     ///
     /// # Errors
-    /// See [Webex::send_message()] errors.
+    /// See [`Webex::send_message()`] errors.
     pub async fn get_message(&self, id: &types::MessageId) -> Result<types::Message, Error> {
         //self.get_message_with_cluster(id, "us").await
         let rest_method = format!("messages/{}", id.id());
@@ -538,7 +533,7 @@ impl Webex {
          */
         let auth = types::Authorization {
             id: Uuid::new_v4().to_string(),
-            _type: "authorization".to_string(),
+            type_: "authorization".to_string(),
             data: types::AuthToken {
                 token: format!("Bearer {}", self.token),
             },

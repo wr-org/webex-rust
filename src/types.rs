@@ -237,7 +237,7 @@ pub struct DeviceFeatureData {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::struct_excessive_bools)]
 pub struct DeviceCapabilities {
     pub group_call_supported: bool,
     pub local_notification_supported: bool,
@@ -247,7 +247,7 @@ pub struct DeviceCapabilities {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::struct_excessive_bools)]
 pub struct DeviceSettings {
     pub reporting_site_url: String,
     pub reporting_site_desc: String,
@@ -285,7 +285,7 @@ pub struct DeviceSettings {
 pub struct Authorization {
     pub id: String,
     #[serde(rename = "type")]
-    pub _type: String,
+    pub type_: String,
     pub data: AuthToken,
 }
 
@@ -351,7 +351,10 @@ pub struct Activity {
 impl Activity {
     #[must_use]
     pub fn get_message_id(&self) -> MessageId {
-        MessageId::new_with_cluster(self.id.clone(), self.target.as_ref().map(Target::get_cluster))
+        MessageId::new_with_cluster(
+            self.id.clone(),
+            &self.target.as_ref().map(Target::get_cluster),
+        )
     }
 }
 
@@ -372,17 +375,30 @@ impl From<String> for MessageId {
 impl MessageId {
     #[must_use]
     pub fn new(id: String) -> Self {
-        Self::new_with_cluster(id, None)
+        Self::new_with_cluster(id, &None)
     }
+    /// Given an ID and a possible cluster, generate a new geo-ID.
+    /// TODO - FIX THIS - work out what the API passes back, let's make sure it's always valid,
+    /// maybe in a better way than this.
+    /// # Panics
+    /// Panics in debug when the ID passed in is not a valid UUID and also not a valid
+    /// base64-encoded message ID (e.g. `base64::encode("ciscospark://us/MESSAGE/[uuid]")`).
     #[must_use]
-    pub fn new_with_cluster(id: String, cluster: Option<String>) -> Self {
+    pub fn new_with_cluster(id: String, cluster: &Option<String>) -> Self {
         let cluster = cluster.as_deref().unwrap_or("us");
 
         let id = match Uuid::parse_str(&id) {
             Ok(_) => base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
             Err(_) => id,
         };
-        debug_assert!(String::from_utf8(base64::decode(&id).unwrap()).unwrap().split('/').nth(3).unwrap() == "MESSAGE");
+        debug_assert!(
+            String::from_utf8(base64::decode(&id).unwrap())
+                .unwrap()
+                .split('/')
+                .nth(3)
+                .unwrap()
+                == "MESSAGE"
+        );
         Self { id }
     }
     #[must_use]
