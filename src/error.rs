@@ -1,5 +1,6 @@
 use hyper::{Error as HyperError, StatusCode};
 use serde_json::error::Error as SerdeError;
+use crate::types::GlobalIdType;
 
 error_chain! {
     foreign_links {
@@ -32,6 +33,11 @@ error_chain! {
         Tungstenite(e: tokio_tungstenite::tungstenite::Error, t: String) {
             description("Failed WS")
             display("{} {}", e, t)
+        }
+
+        IncorrectId(expected: GlobalIdType, actual: GlobalIdType) {
+            description("Incorrect ID type")
+            display("Expected ID type {}, got {}", expected, actual)
         }
     }
 }

@@ -34,11 +34,11 @@ pub mod adaptive_card;
 #[allow(missing_docs)]
 pub mod error;
 pub mod types;
+pub use types::*;
 
 use error::{Error, ErrorKind};
 
 use crate::adaptive_card::AdaptiveCard;
-use crate::types::Attachment;
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
@@ -46,7 +46,9 @@ use log::{debug, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{
+    connect_async, tungstenite::Message as TMessage, MaybeTlsStream, WebSocketStream,
+};
 use uuid::Uuid;
 
 /*
@@ -73,7 +75,7 @@ pub struct Webex {
     token: String,
     host_prefix: HashMap<String, String>,
     /// Webex Device Information used for device registration
-    pub device: types::DeviceData,
+    pub device: DeviceData,
 }
 
 /// Webex Event Stream handler
@@ -93,7 +95,7 @@ impl WebexEventStream {
     /// Returns an error when the underlying stream has a problem, but will
     /// continue to work on subsequent calls to `next()` - the errors can safely
     /// be ignored.
-    pub async fn next(&mut self) -> Result<types::Event, Error> {
+    pub async fn next(&mut self) -> Result<Event, Error> {
         loop {
             let next = self.ws_stream.next();
 
@@ -128,9 +130,9 @@ impl WebexEventStream {
         }
     }
 
-    async fn handle_message(&mut self, msg: Message) -> Result<Option<types::Event>, Error> {
+    async fn handle_message(&mut self, msg: TMessage) -> Result<Option<Event>, Error> {
         match msg {
-            Message::Binary(bytes) => match std::str::from_utf8(&bytes) {
+            TMessage::Binary(bytes) => match std::str::from_utf8(&bytes) {
                 Ok(json) => match serde_json::from_str(json) {
                     Ok(ev) => Ok(Some(ev)),
                     Err(e) => {
@@ -140,24 +142,24 @@ impl WebexEventStream {
                 },
                 Err(e) => Err(e.into()),
             },
-            Message::Text(t) => {
+            TMessage::Text(t) => {
                 debug!("text: {}", t);
                 Ok(None)
             }
-            Message::Ping(_) => {
+            TMessage::Ping(_) => {
                 trace!("Ping!");
                 Ok(None)
             }
-            Message::Close(t) => {
+            TMessage::Close(t) => {
                 debug!("close: {:?}", t);
                 self.is_open = false;
                 Err(ErrorKind::Closed("Web Socket Closed".to_string()).into())
             }
-            Message::Pong(_) => {
+            TMessage::Pong(_) => {
                 debug!("Pong!");
                 Ok(None)
             }
-            Message::Frame(_) => {
+            TMessage::Frame(_) => {
                 debug!("Frame");
                 Ok(None)
             }
@@ -179,7 +181,7 @@ impl Webex {
             token: token.to_string(),
             bearer: format!("Bearer {}", token),
             host_prefix: HashMap::new(),
-            device: types::DeviceData {
+            device: DeviceData {
                 device_name: Some("rust-client".to_string()),
                 device_type: Some("DESKTOP".to_string()),
                 localized_model: Some("rust".to_string()),
@@ -187,7 +189,7 @@ impl Webex {
                 name: Some("rust-spark-client".to_string()),
                 system_name: Some("rust-spark-client".to_string()),
                 system_version: Some("0.1".to_string()),
-                ..types::DeviceData::default()
+                ..DeviceData::default()
             },
         };
 
@@ -200,7 +202,7 @@ impl Webex {
 
     /// Get an event stream handle
     pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
-        let mut devices: Vec<types::DeviceData> = match self.get_devices().await {
+        let mut devices: Vec<DeviceData> = match self.get_devices().await {
             Ok(d) => d,
             Err(e) => {
                 warn!("Failed to get devices {}", e);
@@ -216,7 +218,7 @@ impl Webex {
             }
         };
 
-        devices.sort_by(|a: &types::DeviceData, b: &types::DeviceData| {
+        devices.sort_by(|a: &DeviceData, b: &DeviceData| {
             b.modification_time
                 .unwrap_or_else(chrono::Utc::now)
                 .cmp(&a.modification_time.unwrap_or_else(chrono::Utc::now))
@@ -287,49 +289,54 @@ impl Webex {
     ///
     /// # Arguments
     ///
-    /// * `id` - attachment ID
+    /// * `id` - attachment ID, a [`GlobalId`].
     ///
     /// Retrieves the attachment for the given ID.  This can be used to
     /// retrieve data from an `AdaptiveCard` submission
-    pub async fn get_attachment_action(&self, id: &str) -> Result<types::AttachmentAction, Error> {
-        let rest_method = match Uuid::parse_str(id) {
-            Ok(_) => format!(
-                "attachment/actions/{}",
-                base64::encode(format!("ciscospark://us/ATTACHMENT_ACTION/{}", id))
-            ),
-            Err(_) => {
-                format!("attachment/actions/{}", id)
-            }
-        };
+    ///
+    /// # Errors
+    /// See [`Webex::get_message()`] errors.
+    pub async fn get_attachment_action(&self, id: &GlobalId) -> Result<AttachmentAction, Error> {
+        id.expect_type(GlobalIdType::AttachmentAction)?;
+        let rest_method = format!("attachment/actions/{}", id.id());
         self.api_get(rest_method.as_str()).await
     }
-
+    
     /// Get a message by ID
     ///
     /// # Arguments
     ///
-    /// * `id` - a [`types::MessageId`]
+    /// * `id` - message ID, a [`GlobalId`]
     ///
-    /// If you have a UUID, please use [`types::MessageId::new()`] or [`types::MessageId::from()`].
-    /// If you have an `Activity`, use [`types::Activity::get_message_id()`].
+    /// If you have a UUID, please use [`GlobalId::new()`].
+    /// If you have an `Event`, use [`Event::get_global_id()`].
     ///
     /// # Errors
-    /// See [`Webex::send_message()`] errors.
-    pub async fn get_message(&self, id: &types::MessageId) -> Result<types::Message, Error> {
-        //self.get_message_with_cluster(id, "us").await
+    /// Same as [`Webex::send_message()`] errors, plus an additional one below.
+    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// value cannot be deserialised. (If this happens, this is a library bug and should be
+    /// reported.)
+    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
+    /// * (New) [`ErrorKind::IncorrectId`] - this function has been passed a ``GlobalId`` that does not
+    /// correspond to a message.
+    pub async fn get_message(&self, id: &GlobalId) -> Result<Message, Error> {
+        id.expect_type(GlobalIdType::Message)?;
         let rest_method = format!("messages/{}", id.id());
         self.api_get(rest_method.as_str()).await
     }
 
     /// Delete a message by ID
-    pub async fn delete_message(&self, id: &str) -> Result<(), Error> {
-        let rest_method = format!("messages/{}", id);
+    pub async fn delete_message(&self, id: &GlobalId) -> Result<(), Error> {
+        id.expect_type(GlobalIdType::Message)?;
+        let rest_method = format!("messages/{}", id.id());
         self.api_delete(rest_method.as_str()).await
     }
 
     /// Get available rooms
-    pub async fn get_rooms(&self) -> Result<Vec<types::Room>, Error> {
-        let rooms_reply: Result<types::RoomsReply, _> = self.api_get("rooms").await;
+    pub async fn get_rooms(&self) -> Result<Vec<Room>, Error> {
+        let rooms_reply: Result<RoomsReply, _> = self.api_get("rooms").await;
         match rooms_reply {
             Err(e) => Err(Error::with_chain(e, "rooms failed: ")),
             Ok(rr) => Ok(rr.items),
@@ -337,17 +344,10 @@ impl Webex {
     }
 
     /// Get available room
-    pub async fn get_room(&self, id: &str) -> Result<types::Room, Error> {
-        let rest_method = match Uuid::parse_str(id) {
-            Ok(_) => format!(
-                "rooms/{}",
-                base64::encode(format!("ciscospark://us/ROOM/{}", id))
-            ),
-            Err(_) => {
-                format!("rooms/{}", id)
-            }
-        };
-        let room_reply: Result<types::Room, _> = self.api_get(rest_method.as_str()).await;
+    pub async fn get_room(&self, id: &GlobalId) -> Result<Room, Error> {
+        id.expect_type(GlobalIdType::Room)?;
+        let rest_method = format!("rooms/{}", id.id());
+        let room_reply: Result<Room, _> = self.api_get(rest_method.as_str()).await;
         match room_reply {
             Err(e) => Err(Error::with_chain(e, "room failed: ")),
             Ok(rr) => Ok(rr),
@@ -357,18 +357,11 @@ impl Webex {
     /// Get information about person
     ///
     /// # Errors
-    /// See `send_message`
-    pub async fn get_person(&self, id: &str) -> Result<types::Person, Error> {
-        let rest_method = match Uuid::parse_str(id) {
-            Ok(_) => format!(
-                "people/{}",
-                base64::encode(format!("ciscospark://us/PEOPLE/{}", id))
-            ),
-            Err(_) => {
-                format!("people/{}", id)
-            }
-        };
-        let people_reply: Result<types::Person, _> = self.api_get(rest_method.as_str()).await;
+    /// See `get_message`
+    pub async fn get_person(&self, id: &GlobalId) -> Result<Person, Error> {
+        id.expect_type(GlobalIdType::Person)?;
+        let rest_method = format!("people/{}", id.id());
+        let people_reply: Result<Person, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
             Err(e) => Err(Error::with_chain(e, "people failed: ")),
             Ok(pr) => Ok(pr),
@@ -377,6 +370,10 @@ impl Webex {
 
     /// Send a message to a user or room
     ///
+    /// # Arguments
+    /// * `message`: [`MessageOut`] - the message to send, including one of `room_id`,
+    /// `to_person_id` or `to_person_email`.
+    ///
     /// # Errors
     /// Types of errors returned:
     /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
@@ -384,8 +381,8 @@ impl Webex {
     /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
     /// value cannot be deserialised. (If this happens, this is a library bug and should be
     /// reported.)
-    /// * [`ErrorKind::UTF8`] - returned when the requests returns non-UTF8 code.
-    pub async fn send_message(&self, message: &types::MessageOut) -> Result<types::Message, Error> {
+    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
+    pub async fn send_message(&self, message: &MessageOut) -> Result<Message, Error> {
         self.api_post("messages", &message).await
     }
 
@@ -486,9 +483,9 @@ impl Webex {
         }
     }
 
-    async fn get_devices(&self) -> Result<Vec<types::DeviceData>, Error> {
+    async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
         // https://developer.webex.com/docs/api/v1/devices
-        match self.api_get::<types::DevicesReply>("devices").await {
+        match self.api_get::<DevicesReply>("devices").await {
             Ok(dd) => match dd.devices {
                 Some(devices) => Ok(devices),
                 None => {
@@ -520,7 +517,7 @@ impl Webex {
         }
     }
 
-    async fn setup_devices(&self) -> Result<types::DeviceData, Error> {
+    async fn setup_devices(&self) -> Result<DeviceData, Error> {
         self.api_post("devices", self.device.clone()).await
     }
 
@@ -531,16 +528,16 @@ impl Webex {
         /*
          * Authenticate to the stream
          */
-        let auth = types::Authorization {
+        let auth = Authorization {
             id: Uuid::new_v4().to_string(),
             type_: "authorization".to_string(),
-            data: types::AuthToken {
+            data: AuthToken {
                 token: format!("Bearer {}", self.token),
             },
         };
         debug!("Authenticating to stream");
         match ws_stream
-            .send(Message::Text(serde_json::to_string(&auth).unwrap()))
+            .send(TMessage::Text(serde_json::to_string(&auth).unwrap()))
             .await
         {
             Ok(_) => {
@@ -550,7 +547,7 @@ impl Webex {
                 match ws_stream.next().await {
                     Some(msg) => match msg {
                         Ok(msg) => match msg {
-                            Message::Ping(_) | Message::Pong(_) => {
+                            TMessage::Ping(_) | TMessage::Pong(_) => {
                                 debug!("Authentication succeeded");
                                 Ok(())
                             }
@@ -568,18 +565,18 @@ impl Webex {
     }
 }
 
-impl From<&types::AttachmentAction> for types::MessageOut {
-    fn from(action: &types::AttachmentAction) -> Self {
-        types::MessageOut {
+impl From<&AttachmentAction> for MessageOut {
+    fn from(action: &AttachmentAction) -> Self {
+        MessageOut {
             room_id: action.room_id.clone(),
-            ..types::MessageOut::default()
+            ..MessageOut::default()
         }
     }
 }
 
-impl From<&types::Message> for types::MessageOut {
-    fn from(msg: &types::Message) -> Self {
-        let mut new_msg: Self = types::MessageOut::default();
+impl From<&Message> for MessageOut {
+    fn from(msg: &Message) -> Self {
+        let mut new_msg: Self = MessageOut::default();
 
         if msg.room_type == Some("group".to_string()) {
             new_msg.room_id = msg.room_id.clone();
@@ -593,7 +590,7 @@ impl From<&types::Message> for types::MessageOut {
     }
 }
 
-impl types::MessageOut {
+impl MessageOut {
     /// Generates a new outgoing message from an existing message
     ///
     /// # Arguments
@@ -603,7 +600,7 @@ impl types::MessageOut {
     /// Use `from_msg` to create a reply from a received message.
     #[deprecated(since = "0.2.0", note = "Please use the from instead")]
     #[must_use]
-    pub fn from_msg(msg: &types::Message) -> Self {
+    pub fn from_msg(msg: &Message) -> Self {
         Self::from(msg)
     }
 

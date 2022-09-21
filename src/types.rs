@@ -1,7 +1,7 @@
 #![deny(missing_docs)]
 //! Basic types for Webex Teams APIs
 
-use crate::adaptive_card::AdaptiveCard;
+use crate::{adaptive_card::AdaptiveCard, error, error::ErrorKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -326,15 +326,48 @@ pub struct EventData {
     pub activity: Option<Activity>,
 }
 
+/// Type of action that an activity represents. Does not quite follow, but is similar to, the API
+/// page <https://developer.webex.com/docs/api/v1/events/get-event-details>.
+#[allow(missing_docs)] // Items are self-explanatory
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Verb {
+    #[default]
+    Created,
+    Updated,
+    Deleted,
+    /// This verb is only used when a video-call has ended.
+    Ended,
+}
+
+/// What object an activity is operating on. Does not quite follow, but is similar to, the API
+/// page <https://developer.webex.com/docs/api/v1/events/get-event-details>.
+#[allow(missing_docs)] // Items are self-explanatory
+#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Resource {
+    #[default]
+    Messages,
+    Memberships,
+    Meetings,
+    MeetingTranscripts,
+    Tabs,
+    Rooms,
+    AttachmentActions,
+    Files,
+    #[serde(rename = "file_transcodings")] // Don't ask me why
+    FileTranscodings,
+}
+
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Activity {
     pub id: String,
     #[serde(rename = "objectType")]
-    pub object_type: String,
+    pub object_type: String, // Resource?
     pub url: String,
     pub published: String,
-    pub verb: String,
+    pub verb: String, // Not verb :/ "post", "share"
     pub actor: Actor,
     pub object: Object,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -347,63 +380,138 @@ pub struct Activity {
     pub vector_counters: Option<VectorCounters>,
 }
 
-#[allow(missing_docs)]
-impl Activity {
+impl Event {
+    /// Get the type of resource the event corresponds to
     #[must_use]
-    pub fn get_message_id(&self) -> MessageId {
-        MessageId::new_with_cluster(
+    pub fn activity_type(&self) -> GlobalIdType {
+        match self.data.event_type.as_str() {
+            "conversation.activity" => GlobalIdType::Message,
+            _ => GlobalIdType::Unknown,
+        }
+    }
+    /// A function to extract a global ID from an activity.
+    /// `event.data.activity.id` is a UUID, which can no longer be used for API requests, meaning any attempt
+    /// at using this as an ID in a `Webex::get_*` will fail.
+    /// Users should use this function to get a [`GlobalId`], which works with the updated API. If
+    /// `event.data.activity.target` is not `None` then this function should always produce the correct ID, if
+    /// `target` is `None` then this will guess the location is `us` (which is currently true for
+    /// all IDs).
+    pub fn get_global_id(&self) -> Result<GlobalId, error::Error> {
+        GlobalId::new_with_cluster(
+            self.activity_type(),
             self.id.clone(),
-            &self.target.as_ref().map(Target::get_cluster),
+            self.data
+                .activity
+                .as_ref()
+                .and_then(|a| a.target.as_ref())
+                .as_ref()
+                .and_then(|t| t.get_cluster())
+                .as_deref(),
         )
     }
 }
 
-#[allow(missing_docs)]
-#[derive(Debug, Clone)]
-pub struct MessageId {
-    id: String,
-}
-
-#[allow(missing_docs)]
-impl From<String> for MessageId {
-    fn from(s: String) -> MessageId {
-        MessageId::new(s)
+impl Target {
+    /// Turns a `Target` into a cluster - used for message geodata
+    /// Assumes following API contracts:
+    /// - `target.global_id` should be a valid base64 string.
+    /// - `base64::decode(target.global_id)` should be a valid UTF-8 string, and in the form
+    /// `"ciscospark://[cluster]/[type]/[id]"`.
+    /// Will return `None` if any of those are broken.
+    pub(crate) fn get_cluster(&self) -> Option<String> {
+        String::from_utf8(base64::decode(&self.global_id).ok()?)
+            .ok()?
+            .split('/')
+            .nth(2)
+            .map(std::string::ToString::to_string)
     }
 }
 
-#[allow(missing_docs)]
-impl MessageId {
-    #[must_use]
-    pub fn new(id: String) -> Self {
-        Self::new_with_cluster(id, &None)
+/// This represents the type of an ID produced by the API, to prevent (for example) message IDs
+/// being used for a room ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlobalIdType {
+    /// This GlobalId represents the ID of a message
+    Message,
+    /// Corresponds to the ID of a person
+    Person,
+    /// Corresponds to the ID of a room
+    Room,
+    /// Retrieves a specific attachment
+    AttachmentAction,
+    /// This GlobalId represents the ID of something not currently recognised, any API requests
+    /// with this GlobalId will produce an error.
+    Unknown,
+}
+impl std::fmt::Display for GlobalIdType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                GlobalIdType::Message => "MESSAGE",
+                GlobalIdType::Person => "PEOPLE",
+                GlobalIdType::Room => "ROOM",
+                GlobalIdType::AttachmentAction => "ATTACHMENT_ACTION",
+                GlobalIdType::Unknown => "<UNKNOWN>",
+            }
+        )
+    }
+}
+
+/// This type is used to hold the ID of a message, room, person etc.
+/// It is created from a certain resource type to make it impossible to use a person ID to fetch a
+/// message, or vice versa.
+#[derive(Debug, Clone)]
+pub struct GlobalId {
+    id: String,
+    type_: GlobalIdType,
+}
+
+impl GlobalId {
+    /// Create a new ``GlobalId``, with an ID type as well as an API ID (which can be either old
+    /// UUID-style, or new base64 URI style).
+    pub fn new(type_: GlobalIdType, id: String) -> Result<Self, error::Error> {
+        Self::new_with_cluster(type_, id, None)
     }
     /// Given an ID and a possible cluster, generate a new geo-ID.
-    /// TODO - FIX THIS - work out what the API passes back, let's make sure it's always valid,
-    /// maybe in a better way than this.
-    /// # Panics
-    /// Panics in debug when the ID passed in is not a valid UUID and also not a valid
-    /// base64-encoded message ID (e.g. `base64::encode("ciscospark://us/MESSAGE/[uuid]")`).
-    #[must_use]
-    pub fn new_with_cluster(id: String, cluster: &Option<String>) -> Self {
-        let cluster = cluster.as_deref().unwrap_or("us");
+    /// Will fail if given a ``GlobalIdType`` that doesn't correspond to a particular type (message, room,
+    /// etc.)
+    pub fn new_with_cluster(
+        type_: GlobalIdType,
+        id: String,
+        cluster: Option<&str>,
+    ) -> Result<Self, error::Error> {
+        if type_ == GlobalIdType::Unknown {
+            return Err(
+                ErrorKind::Msg("Cannot get globalId for unknown ID type".to_string()).into(),
+            );
+        };
+        let cluster = cluster.unwrap_or("us");
 
         let id = match Uuid::parse_str(&id) {
-            Ok(_) => base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
+            Ok(_) => base64::encode(format!("ciscospark://{}/{}/{}", cluster, type_, id)),
             Err(_) => id,
         };
-        debug_assert!(
-            String::from_utf8(base64::decode(&id).unwrap())
-                .unwrap()
-                .split('/')
-                .nth(3)
-                .unwrap()
-                == "MESSAGE"
-        );
-        Self { id }
+        Ok(Self { id, type_ })
     }
+    /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
     #[must_use]
-    pub fn id(&self) -> String {
-        self.id.clone()
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+    /// Returns the type of the ID
+    #[must_use]
+    pub fn id_type(&self) -> GlobalIdType {
+        self.type_
+    }
+
+    pub(crate) fn expect_type(&self, expected: GlobalIdType) -> Result<(), error::Error> {
+        if self.type_ == expected {
+            Ok(())
+        } else {
+            Err(ErrorKind::IncorrectId(expected, self.type_).into())
+        }
     }
 }
 
@@ -427,22 +535,6 @@ pub struct Target {
     pub tags: Vec<String>,
     #[serde(rename = "globalId")]
     pub global_id: String,
-}
-
-#[allow(missing_docs)]
-impl Target {
-    /// Turns a `Target` into a cluster - used for message geodata
-    pub(crate) fn get_cluster(&self) -> String {
-        let target_info = String::from_utf8(
-            base64::decode(&self.global_id)
-                .expect("event.data.target.globalId should be a base64 string"),
-        )
-        .expect("decoded globalId should be a valid utf-8 string");
-        let cluster = target_info.split('/').nth(2).expect(
-            "event.data.target.globalId should be in the form ciscospark://[cluster]/[type]/[id]",
-        );
-        cluster.to_string()
-    }
 }
 
 #[allow(missing_docs)]
