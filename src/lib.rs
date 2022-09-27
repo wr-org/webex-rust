@@ -281,7 +281,7 @@ impl Webex {
                     is_open: true,
                 })
             }
-            Err(e) => Err(Into::<Error>::into(format!("connecting to {}, {}", url, e))),
+            Err(e) => Err(format!("connecting to {}, {}", url, e).into()),
         }
     }
 
@@ -297,8 +297,7 @@ impl Webex {
     /// # Errors
     /// See [`Webex::get_message()`] errors.
     pub async fn get_attachment_action(&self, id: &GlobalId) -> Result<AttachmentAction, Error> {
-        id.expect_type(GlobalIdType::AttachmentAction)?;
-        let rest_method = format!("attachment/actions/{}", id.id());
+        let rest_method = format!("attachment/actions/{}", id.id(GlobalIdType::AttachmentAction)?);
         self.api_get(rest_method.as_str()).await
     }
     
@@ -322,15 +321,13 @@ impl Webex {
     /// * (New) [`ErrorKind::IncorrectId`] - this function has been passed a ``GlobalId`` that does not
     /// correspond to a message.
     pub async fn get_message(&self, id: &GlobalId) -> Result<Message, Error> {
-        id.expect_type(GlobalIdType::Message)?;
-        let rest_method = format!("messages/{}", id.id());
+        let rest_method = format!("messages/{}", id.id(GlobalIdType::Message)?);
         self.api_get(rest_method.as_str()).await
     }
 
     /// Delete a message by ID
     pub async fn delete_message(&self, id: &GlobalId) -> Result<(), Error> {
-        id.expect_type(GlobalIdType::Message)?;
-        let rest_method = format!("messages/{}", id.id());
+        let rest_method = format!("messages/{}", id.id(GlobalIdType::Message)?);
         self.api_delete(rest_method.as_str()).await
     }
 
@@ -345,8 +342,7 @@ impl Webex {
 
     /// Get available room
     pub async fn get_room(&self, id: &GlobalId) -> Result<Room, Error> {
-        id.expect_type(GlobalIdType::Room)?;
-        let rest_method = format!("rooms/{}", id.id());
+        let rest_method = format!("rooms/{}", id.id(GlobalIdType::Room)?);
         let room_reply: Result<Room, _> = self.api_get(rest_method.as_str()).await;
         match room_reply {
             Err(e) => Err(Error::with_chain(e, "room failed: ")),
@@ -359,8 +355,7 @@ impl Webex {
     /// # Errors
     /// See `get_message`
     pub async fn get_person(&self, id: &GlobalId) -> Result<Person, Error> {
-        id.expect_type(GlobalIdType::Person)?;
-        let rest_method = format!("people/{}", id.id());
+        let rest_method = format!("people/{}", id.id(GlobalIdType::Person)?);
         let people_reply: Result<Person, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
             Err(e) => Err(Error::with_chain(e, "people failed: ")),

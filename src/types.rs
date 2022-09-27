@@ -326,48 +326,15 @@ pub struct EventData {
     pub activity: Option<Activity>,
 }
 
-/// Type of action that an activity represents. Does not quite follow, but is similar to, the API
-/// page <https://developer.webex.com/docs/api/v1/events/get-event-details>.
-#[allow(missing_docs)] // Items are self-explanatory
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum Verb {
-    #[default]
-    Created,
-    Updated,
-    Deleted,
-    /// This verb is only used when a video-call has ended.
-    Ended,
-}
-
-/// What object an activity is operating on. Does not quite follow, but is similar to, the API
-/// page <https://developer.webex.com/docs/api/v1/events/get-event-details>.
-#[allow(missing_docs)] // Items are self-explanatory
-#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum Resource {
-    #[default]
-    Messages,
-    Memberships,
-    Meetings,
-    MeetingTranscripts,
-    Tabs,
-    Rooms,
-    AttachmentActions,
-    Files,
-    #[serde(rename = "file_transcodings")] // Don't ask me why
-    FileTranscodings,
-}
-
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Activity {
     pub id: String,
     #[serde(rename = "objectType")]
-    pub object_type: String, // Resource?
+    pub object_type: String,
     pub url: String,
     pub published: String,
-    pub verb: String, // Not verb :/ "post", "share"
+    pub verb: String,
     pub actor: Actor,
     pub object: Object,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -404,8 +371,7 @@ impl Event {
                 .activity
                 .as_ref()
                 .and_then(|a| a.target.as_ref())
-                .as_ref()
-                .and_then(|t| t.get_cluster())
+                .and_then(Target::get_cluster)
                 .as_deref(),
         )
     }
@@ -477,6 +443,40 @@ impl GlobalId {
     /// Given an ID and a possible cluster, generate a new geo-ID.
     /// Will fail if given a ``GlobalIdType`` that doesn't correspond to a particular type (message, room,
     /// etc.)
+    /// # Arguments
+    /// * ``type_: GlobalIdType`` - the type of the ID being constructed
+    /// * ``id: String`` - the ID, either old (UUID) or new (base64 geo-ID)
+    /// * ``cluster: Option<&str>`` - cluster for geo-ID. Only used if the ID is an old-style UUID.
+    /// Will default to `"us"` if not given and can't be determined from the ID - this should work
+    /// for most requests.
+    ///
+    /// # Errors
+    /// * ``ErrorKind::Msg`` if:
+    ///   * the ID type is ``GlobalIdType::Unknown``.
+    ///   * the ID is a base64 geo-ID that does not follow the format
+    ///   ``ciscospark://[cluster]/[type]/[id]``.
+    ///   * the ID is a base64 geo-ID and the type does not match the given type.
+    ///   * the ID is a base64 geo-ID and the cluster does not match the given cluster.
+    ///   * the ID is neither a UUID or a base64 geo-id.
+    ///
+    /// # Examples
+    /// ```
+    /// use webex::{GlobalId, GlobalIdType};
+    /// // Create a new GlobalId
+    /// // Note: you should never need to do this in your code.
+    /// // Is making all this public a code smell?
+    /// let id = GlobalId::new_with_cluster(
+    ///     GlobalIdType::Message,
+    ///     "0fad2000-f9f5-11eb-9eee-79a3ef978a3d".to_string(),
+    ///     None)?;
+    /// // Show off type-checked IDs - ensure that the ID passed into a function is the one
+    /// // expected.
+    /// assert_eq!(id.id(GlobalIdType::Message)?,
+    ///     base64::encode("ciscospark://us/MESSAGE/0fad2000-f9f5-11eb-9eee-79a3ef978a3d"));
+    /// // If the ID passed in is for a different resource, produce an error.
+    /// assert!(id.id(GlobalIdType::Person).is_err());
+    /// # Ok::<(), webex::error::Error>(())
+    /// ```
     pub fn new_with_cluster(
         type_: GlobalIdType,
         id: String,
@@ -487,28 +487,60 @@ impl GlobalId {
                 ErrorKind::Msg("Cannot get globalId for unknown ID type".to_string()).into(),
             );
         };
-        let cluster = cluster.unwrap_or("us");
-
-        let id = match Uuid::parse_str(&id) {
-            Ok(_) => base64::encode(format!("ciscospark://{}/{}/{}", cluster, type_, id)),
-            Err(_) => id,
+        // If ID is base64,
+        // - decode
+        // - verify cluster == passed in cluster
+        // - verify type == passed in type
+        // else
+        // - use cluster + passed in type
+        let cluster_name = cluster.unwrap_or("us");
+        let id = if let Ok(decoded_id) = base64::decode(&id) {
+            let decoded_id = std::str::from_utf8(&decoded_id).map_err(|e| {
+                error::Error::from(ErrorKind::UTF8(e))
+                    .chain_err(|| "Failed to turn base64 id into UTF8 string")
+            })?;
+            Self::check_id(decoded_id, cluster, &type_.to_string())?;
+            id
+        } else if Uuid::parse_str(&id).is_ok() {
+            base64::encode(format!("ciscospark://{}/{}/{}", cluster_name, type_, id))
+        } else {
+            return Err(
+                ErrorKind::Msg("Expected ID to be base64 geo-id or uuid".to_string()).into(),
+            );
         };
         Ok(Self { id, type_ })
     }
-    /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
-    #[must_use]
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-    /// Returns the type of the ID
-    #[must_use]
-    pub fn id_type(&self) -> GlobalIdType {
-        self.type_
-    }
+    fn check_id(id: &str, cluster: Option<&str>, type_: &str) -> Result<(), error::Error> {
+        let decoded_parts: Vec<&str> = id.split('/').collect();
+        if decoded_parts.len() != 5
+            || decoded_parts[0] != "ciscospark:"
+            || !decoded_parts[1].is_empty()
+        {
+            return Err(ErrorKind::Msg(
+                "Expected base64 ID to be in the form ciscospark://[cluster]/[type]/[id]"
+                    .to_string(),
+            )
+            .into());
+        } else if let Some(expected_cluster) = cluster {
+            if decoded_parts[2] != expected_cluster {
+                // TODO - this won't happen when we fetch the cluster ourselves, since we get it from
+                // the ID. Can we/should we skip this check somehow?
 
-    pub(crate) fn expect_type(&self, expected: GlobalIdType) -> Result<(), error::Error> {
+                return Err(ErrorKind::Msg(format!(
+                    "Expected base64 cluster to equal expected cluster {expected_cluster}"
+                ))
+                .into());
+            }
+        } else if decoded_parts[3] != type_ {
+            return Err(ErrorKind::Msg(format!("Expected base64 type to equal {type_}")).into());
+        }
+        Ok(())
+    }
+    /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
+    /// Takes an expected type to ensure that the ID is for the correct type of object.
+    pub fn id(&self, expected: GlobalIdType) -> Result<&str, error::Error> {
         if self.type_ == expected {
-            Ok(())
+            Ok(&self.id)
         } else {
             Err(ErrorKind::IncorrectId(expected, self.type_).into())
         }
@@ -566,20 +598,39 @@ pub struct MiscItem {
     pub object_type: String,
 }
 
+/// Alerting specified in received events.
+/// TODO: may be missing some enum variants.
+/// ALSO TODO: figure out what this does. Best guess, it refers to what alerts (e.g. a
+/// notification) an event will generate.
+/// There may be another variant for an event that may or may not make an alert (messages with
+/// mentions?)
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertType {
+    /// This event won't ever generate an alert (?)
+    #[default]
+    None,
+    /// This event will always generate an alert (?)
+    Full,
+}
+
+/// Returned from [`WebexEventStream::next()`][`crate::WebexEventStream::next()`]. Contains information about the received event.
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Event {
+    /// Event ID, may be UUID or base64-encoded. Please do not use this directly, prefer to use
+    /// [`Event::get_global_id()`].
     pub id: String,
+    #[allow(missing_docs)]
     pub data: EventData,
+    /// Timestamp in milliseconds since epoch.
     pub timestamp: i64,
-    #[serde(rename = "trackingId")]
     pub tracking_id: String,
-    #[serde(rename = "alertType", skip_serializing_if = "Option::is_none")]
-    pub alert_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alert_type: Option<AlertType>,
     pub headers: HashMap<String, String>,
-    #[serde(rename = "sequenceNumber")]
     pub sequence_number: i64,
-    #[serde(rename = "filterMessage")]
     pub filter_message: bool,
 }
 
