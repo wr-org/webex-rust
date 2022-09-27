@@ -460,15 +460,15 @@ impl GlobalId {
     ///   * the ID is neither a UUID or a base64 geo-id.
     ///
     /// # Examples
+    /// Basic behaviour: default cluster, type-checking ID
     /// ```
     /// use webex::{GlobalId, GlobalIdType};
     /// // Create a new GlobalId
     /// // Note: you should never need to do this in your code.
     /// // Is making all this public a code smell?
-    /// let id = GlobalId::new_with_cluster(
+    /// let id = GlobalId::new(
     ///     GlobalIdType::Message,
-    ///     "0fad2000-f9f5-11eb-9eee-79a3ef978a3d".to_string(),
-    ///     None)?;
+    ///     "0fad2000-f9f5-11eb-9eee-79a3ef978a3d".to_string())?;
     /// // Show off type-checked IDs - ensure that the ID passed into a function is the one
     /// // expected.
     /// assert_eq!(id.id(GlobalIdType::Message)?,
