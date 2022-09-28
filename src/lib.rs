@@ -42,10 +42,10 @@ use crate::adaptive_card::AdaptiveCard;
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use log::{debug, trace, warn};
+use log::{debug, info, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, runtime::Handle};
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as TMessage, MaybeTlsStream, WebSocketStream,
 };
@@ -61,7 +61,8 @@ use uuid::Uuid;
  */
 
 const REST_HOST_PREFIX: &str = "https://api.ciscospark.com/v1";
-const REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
+const U2C_HOST_PREFIX: &str = "https://u2c.wbx2.com/u2c/api/v1";
+const DEFAULT_REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -193,9 +194,20 @@ impl Webex {
             },
         };
 
-        webex
-            .host_prefix
-            .insert("devices".to_string(), REGISTRATION_HOST_PREFIX.to_string());
+        let devices_url = webex.get_mercury_url();
+        //let devices_url: Result<_, error::Error> = Ok(DEFAULT_REGISTRATION_HOST_PREFIX.to_string());
+        let devices_url = match devices_url {
+            Ok(url) => {
+                info!("Fetched mercury url {}", url);
+                url
+            }
+            Err(e) => {
+                warn!("Failed to fetch devices url, falling back to default");
+                debug!("Error: {}", e);
+                DEFAULT_REGISTRATION_HOST_PREFIX.to_string()
+            }
+        };
+        webex.host_prefix.insert("devices".to_string(), devices_url);
 
         webex
     }
@@ -285,6 +297,50 @@ impl Webex {
         }
     }
 
+    fn get_mercury_url(&mut self) -> Result<String, error::Error> {
+        // Steps:
+        // 1. Get org id by GET /v1/organizations
+        // 2. Get urls json from https://u2c.wbx2.com/u2c/api/v1/limited/catalog?orgId=[org id]
+        // 3. mercury url is urls["serviceLinks"]["wdm"]
+        //
+        // We need to spawn a new thread because to create a new async executor, we can't be inside
+        // an executor ourselves. Yes it's hacky, no there's no other way (apart from making
+        // Webex::new async).
+
+        let mut catalogs = None;
+        std::thread::scope(|s| {
+            let rt = Handle::current();
+            catalogs = Some(
+                s.spawn(move || {
+                    let orgs = rt.block_on(self.get_orgs())?;
+                    if orgs.len() != 1 {
+                        panic!("Can only get mercury URL if account is part of exactly one org");
+                    }
+                    let org_id = &orgs[0].id;
+                    let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
+                    self.host_prefix
+                        .insert(api_url.clone(), U2C_HOST_PREFIX.to_string());
+
+                    rt.block_on(self.api_get::<CatalogReply>(&api_url))
+                })
+                .join()
+                .expect("Shouldn't panic"),
+            );
+        });
+        Ok(catalogs
+            .expect("Should have run async code")?
+            .service_links
+            .wdm)
+    }
+
+    /// Get list of organizations
+    ///
+    /// # Errors
+    /// See [`Webex::get_message()`] errors.
+    pub async fn get_orgs(&self) -> Result<Vec<Organization>, Error> {
+        let orgs: OrganizationReply = self.api_get("organizations").await?;
+        Ok(orgs.items)
+    }
     /// Get attachment action
     ///
     /// # Arguments
@@ -297,10 +353,13 @@ impl Webex {
     /// # Errors
     /// See [`Webex::get_message()`] errors.
     pub async fn get_attachment_action(&self, id: &GlobalId) -> Result<AttachmentAction, Error> {
-        let rest_method = format!("attachment/actions/{}", id.id(GlobalIdType::AttachmentAction)?);
+        let rest_method = format!(
+            "attachment/actions/{}",
+            id.id(GlobalIdType::AttachmentAction)?
+        );
         self.api_get(rest_method.as_str()).await
     }
-    
+
     /// Get a message by ID
     ///
     /// # Arguments

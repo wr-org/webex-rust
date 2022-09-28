@@ -42,6 +42,59 @@ pub struct RoomsReply {
     pub items: Vec<Room>,
 }
 
+/// Holds details about the organization an account belongs to.
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Organization {
+    /// Id of the org.
+    pub id: String,
+    /// Display name of the org
+    pub display_name: String,
+    /// Date and time the org was created
+    pub created: String,
+}
+
+/// API reply holding the orgs a person belongs to
+#[derive(Deserialize, Serialize, Debug)]
+pub struct OrganizationReply {
+    /// List of orgs returned
+    pub items: Vec<Organization>,
+}
+
+#[allow(missing_docs)]
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogReply {
+    pub service_links: Catalog,
+}
+#[allow(missing_docs)]
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "kebab-case")]
+pub struct Catalog {
+    pub atlas: String,
+    #[serde(rename = "broadworksIdpProxy")]
+    pub broadworks_idp_proxy: String,
+    #[serde(rename = "clientLogs")]
+    pub client_logs: String,
+    pub ecomm: String,
+    pub fms: String,
+    pub idbroker: String,
+    pub idbroker_guest: String,
+    pub identity: String,
+    pub identity_guest_cs: String,
+    pub license: String,
+    #[serde(rename = "meetingRegistry")]
+    pub meeting_registry: String,
+    pub metrics: String,
+    pub oauth_helper: String,
+    pub settings_service: String,
+    pub u2c: String,
+    /// wdm is the url used for fetching devices.
+    pub wdm: String,
+    pub web_authentication: String,
+    pub webex_appapi_service: String,
+}
+
 /// Outgoing message
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct MessageOut {
@@ -364,7 +417,8 @@ impl Event {
     /// `target` is `None` then this will guess the location is `us` (which is currently true for
     /// all IDs).
     pub fn get_global_id(&self) -> Result<GlobalId, error::Error> {
-        GlobalId::new_with_cluster(
+        // Safety: ID should be fine since it's from the API (guaranteed to be UUID or b64 URI).
+        GlobalId::new_with_cluster_unchecked(
             self.activity_type(),
             self.id.clone(),
             self.data
@@ -486,27 +540,38 @@ impl GlobalId {
             return Err(
                 ErrorKind::Msg("Cannot get globalId for unknown ID type".to_string()).into(),
             );
-        };
-        // If ID is base64,
-        // - decode
-        // - verify cluster == passed in cluster
-        // - verify type == passed in type
-        // else
-        // - use cluster + passed in type
-        let cluster_name = cluster.unwrap_or("us");
-        let id = if let Ok(decoded_id) = base64::decode(&id) {
+        }
+        if let Ok(decoded_id) = base64::decode(&id) {
             let decoded_id = std::str::from_utf8(&decoded_id).map_err(|e| {
                 error::Error::from(ErrorKind::UTF8(e))
                     .chain_err(|| "Failed to turn base64 id into UTF8 string")
             })?;
             Self::check_id(decoded_id, cluster, &type_.to_string())?;
-            id
-        } else if Uuid::parse_str(&id).is_ok() {
-            base64::encode(format!("ciscospark://{}/{}/{}", cluster_name, type_, id))
-        } else {
+        } else if Uuid::parse_str(&id).is_err() {
             return Err(
                 ErrorKind::Msg("Expected ID to be base64 geo-id or uuid".to_string()).into(),
             );
+        }
+        Self::new_with_cluster_unchecked(type_, id, cluster)
+    }
+
+    /// Given an ID and a possible cluster, generate a new geo-ID.
+    /// Skips all checks. (If something wrong is passed, for example a [`GlobalIdType::Unknown`],
+    /// this will silently produce a bad ID that will always return a 404 from the API.)
+    pub fn new_with_cluster_unchecked(
+        type_: GlobalIdType,
+        id: String,
+        cluster: Option<&str>,
+    ) -> Result<Self, error::Error> {
+        let id = if Uuid::parse_str(&id).is_ok() {
+            base64::encode(format!(
+                "ciscospark://{}/{}/{}",
+                cluster.unwrap_or("us"),
+                type_,
+                id
+            ))
+        } else {
+            id
         };
         Ok(Self { id, type_ })
     }
@@ -540,10 +605,18 @@ impl GlobalId {
     /// Takes an expected type to ensure that the ID is for the correct type of object.
     pub fn id(&self, expected: GlobalIdType) -> Result<&str, error::Error> {
         if self.type_ == expected {
-            Ok(&self.id)
+            Ok(self.id_unchecked())
         } else {
             Err(ErrorKind::IncorrectId(expected, self.type_).into())
         }
+    }
+    /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
+    /// Does not check the ID type, useful when performance is critical.
+    /// It is always safe to use this rather than `.id()` - the worst that'll happen is a 404 error
+    /// from the API.
+    #[must_use]
+    pub fn id_unchecked(&self) -> &str {
+        &self.id
     }
 }
 
