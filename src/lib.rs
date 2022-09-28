@@ -194,6 +194,10 @@ impl Webex {
             },
         };
 
+        webex.host_prefix.insert(
+            "limited/catalog".to_string(),
+            U2C_HOST_PREFIX.to_string());
+
         let devices_url = webex.get_mercury_url();
         //let devices_url: Result<_, error::Error> = Ok(DEFAULT_REGISTRATION_HOST_PREFIX.to_string());
         let devices_url = match devices_url {
@@ -297,7 +301,7 @@ impl Webex {
         }
     }
 
-    fn get_mercury_url(&mut self) -> Result<String, error::Error> {
+    fn get_mercury_url(&self) -> Result<String, error::Error> {
         // Steps:
         // 1. Get org id by GET /v1/organizations
         // 2. Get urls json from https://u2c.wbx2.com/u2c/api/v1/limited/catalog?orgId=[org id]
@@ -318,9 +322,6 @@ impl Webex {
                     }
                     let org_id = &orgs[0].id;
                     let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
-                    self.host_prefix
-                        .insert(api_url.clone(), U2C_HOST_PREFIX.to_string());
-
                     rt.block_on(self.api_get::<CatalogReply>(&api_url))
                 })
                 .join()
@@ -492,7 +493,11 @@ impl Webex {
         body: Option<T>,
     ) -> Result<String, Error> {
         let default_prefix = String::from(REST_HOST_PREFIX);
-        let prefix = self.host_prefix.get(rest_method).unwrap_or(&default_prefix);
+        let rest_method_trimmed = rest_method
+            .split('?')
+            .next()
+            .unwrap_or(rest_method);
+        let prefix = self.host_prefix.get(rest_method_trimmed).unwrap_or(&default_prefix);
         let url = format!("{}/{}", prefix, rest_method);
         debug!("Calling {} {:?}", http_method, url);
         let mut builder = Request::builder()
