@@ -194,13 +194,11 @@ impl Webex {
             },
         };
 
-        webex.host_prefix.insert(
-            "limited/catalog".to_string(),
-            U2C_HOST_PREFIX.to_string());
+        webex
+            .host_prefix
+            .insert("limited/catalog".to_string(), U2C_HOST_PREFIX.to_string());
 
-        let devices_url = webex.get_mercury_url();
-        //let devices_url: Result<_, error::Error> = Ok(DEFAULT_REGISTRATION_HOST_PREFIX.to_string());
-        let devices_url = match devices_url {
+        let devices_url = match webex.get_mercury_url() {
             Ok(url) => {
                 info!("Fetched mercury url {}", url);
                 url
@@ -218,19 +216,48 @@ impl Webex {
 
     /// Get an event stream handle
     pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
+
+        // Helper function to connect to a device
+        // refactored out to make it easier to loop through all devices and also lazily create a
+        // new one if needed
+        async fn connect_device(
+            s: &Webex,
+            device: DeviceData,
+        ) -> Option<Result<WebexEventStream, Error>> {
+            let ws_url = device.ws_url?;
+            let url = match url::Url::parse(ws_url.as_str()) {
+                Ok(u) => u,
+                Err(e) => {
+                    warn!("Failed to parse {:?}", e);
+                    return None;
+                }
+            };
+            debug!("Connecting to {:?}", url);
+            match connect_async(url.clone()).await {
+                Ok((mut ws_stream, _response)) => {
+                    debug!("Connected to {}", url);
+                    s.ws_auth(&mut ws_stream).await.ok()?;
+                    debug!("Authenticated");
+                    let timeout = Duration::from_secs(20);
+                    Some(Ok(WebexEventStream {
+                        ws_stream,
+                        timeout,
+                        is_open: true,
+                    }))
+                }
+                Err(e) => {
+                    warn!("Failed to connect to {:?}: {:?}", url, e);
+                    None
+                }
+            }
+        }
+
         let mut devices: Vec<DeviceData> = match self.get_devices().await {
             Ok(d) => d,
             Err(e) => {
                 warn!("Failed to get devices {}", e);
-                if let Err(e) = self.setup_devices().await {
-                    return Err(e);
-                };
-                match self.get_devices().await {
-                    Ok(d) => d,
-                    Err(e) => {
-                        return Err(e);
-                    }
-                }
+                self.setup_devices().await?;
+                self.get_devices().await?
             }
         };
 
@@ -241,63 +268,16 @@ impl Webex {
         });
 
         for device in devices {
-            if let Some(ws_url) = device.ws_url {
-                let url = match url::Url::parse(ws_url.as_str()) {
-                    Ok(u) => u,
-                    Err(e) => {
-                        warn!("Failed to parse {:?}", e);
-                        continue;
-                    }
-                };
-                debug!("Connecting to {:?}", url);
-                match connect_async(url.clone()).await {
-                    Ok((mut ws_stream, _response)) => {
-                        debug!("Connected to {}", url);
-                        self.ws_auth(&mut ws_stream).await?;
-                        debug!("Authenticated");
-                        let timeout = Duration::from_secs(20);
-                        return Ok(WebexEventStream {
-                            ws_stream,
-                            timeout,
-                            is_open: true,
-                        });
-                    }
-                    Err(e) => {
-                        warn!("Failed to connect to {:?}: {:?}", url, e);
-                        continue;
-                    }
-                };
+            if let Some(event_stream) = connect_device(self, device).await {
+                return event_stream;
             }
         }
 
         // Failed to connect to any existing devices, creating new one
-        let ws_url = match self.setup_devices().await {
-            Ok(d) => match d.ws_url {
-                Some(url) => url.clone(),
-                None => return Err("Registered device has no ws url".into()),
-            },
-            Err(e) => {
-                return Err(format!("Failed to setup device: {}", e).into());
-            }
-        };
-
-        let url = url::Url::parse(ws_url.as_str())
-            .map_err(|e| Into::<Error>::into(format!("Unable to parse WS URL {}", e)))?;
-        debug!("Connecting to #2 {:?}", url);
-
-        match connect_async(url.clone()).await {
-            Ok((mut ws_stream, _response)) => {
-                debug!("Connected to {}", url);
-                self.ws_auth(&mut ws_stream).await?;
-
-                let timeout = Duration::from_secs(20);
-                Ok(WebexEventStream {
-                    ws_stream,
-                    timeout,
-                    is_open: true,
-                })
-            }
-            Err(e) => Err(format!("connecting to {}, {}", url, e).into()),
+        if let Some(event_stream) = connect_device(self, self.setup_devices().await?).await {
+            event_stream
+        } else {
+            Err(Error::from("Failed to connect to any existing device and newly created device"))
         }
     }
 
@@ -493,11 +473,11 @@ impl Webex {
         body: Option<T>,
     ) -> Result<String, Error> {
         let default_prefix = String::from(REST_HOST_PREFIX);
-        let rest_method_trimmed = rest_method
-            .split('?')
-            .next()
-            .unwrap_or(rest_method);
-        let prefix = self.host_prefix.get(rest_method_trimmed).unwrap_or(&default_prefix);
+        let rest_method_trimmed = rest_method.split('?').next().unwrap_or(rest_method);
+        let prefix = self
+            .host_prefix
+            .get(rest_method_trimmed)
+            .unwrap_or(&default_prefix);
         let url = format!("{}/{}", prefix, rest_method);
         debug!("Calling {} {:?}", http_method, url);
         let mut builder = Request::builder()
