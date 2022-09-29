@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic)]
-#![allow(clippy::missing_errors_doc)] // TODO remove this
+#![allow(clippy::missing_errors_doc)]
 #![cfg_attr(test, deny(warnings))]
 #![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
 
@@ -49,7 +49,6 @@ use tokio::{net::TcpStream, runtime::Handle};
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as TMessage, MaybeTlsStream, WebSocketStream,
 };
-use uuid::Uuid;
 
 /*
  * URLs:
@@ -60,8 +59,11 @@ use uuid::Uuid;
  * these are not supported.
  */
 
+// Main API URL - default for any request.
 const REST_HOST_PREFIX: &str = "https://api.ciscospark.com/v1";
+// U2C - service discovery, used to discover other URLs (for example, the mercury URL).
 const U2C_HOST_PREFIX: &str = "https://u2c.wbx2.com/u2c/api/v1";
+// Default mercury URL, used when the token doesn't have permissions to list organizations.
 const DEFAULT_REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
 /// Web Socket Stream type
@@ -194,6 +196,8 @@ impl Webex {
             },
         };
 
+        // Have to insert this before calling get_mercury_url() since it uses U2C for the catalog
+        // request.
         webex
             .host_prefix
             .insert("limited/catalog".to_string(), U2C_HOST_PREFIX.to_string());
@@ -216,7 +220,6 @@ impl Webex {
 
     /// Get an event stream handle
     pub async fn event_stream(&self) -> Result<WebexEventStream, Error> {
-
         // Helper function to connect to a device
         // refactored out to make it easier to loop through all devices and also lazily create a
         // new one if needed
@@ -277,7 +280,9 @@ impl Webex {
         if let Some(event_stream) = connect_device(self, self.setup_devices().await?).await {
             event_stream
         } else {
-            Err(Error::from("Failed to connect to any existing device and newly created device"))
+            Err(Error::from(
+                "Failed to connect to any existing device and newly created device",
+            ))
         }
     }
 
@@ -334,10 +339,8 @@ impl Webex {
     /// # Errors
     /// See [`Webex::get_message()`] errors.
     pub async fn get_attachment_action(&self, id: &GlobalId) -> Result<AttachmentAction, Error> {
-        let rest_method = format!(
-            "attachment/actions/{}",
-            id.id(GlobalIdType::AttachmentAction)?
-        );
+        debug_assert!(id.id(GlobalIdType::AttachmentAction).is_ok());
+        let rest_method = format!("attachment/actions/{}", id.id_unchecked());
         self.api_get(rest_method.as_str()).await
     }
 
@@ -361,13 +364,15 @@ impl Webex {
     /// * (New) [`ErrorKind::IncorrectId`] - this function has been passed a ``GlobalId`` that does not
     /// correspond to a message.
     pub async fn get_message(&self, id: &GlobalId) -> Result<Message, Error> {
-        let rest_method = format!("messages/{}", id.id(GlobalIdType::Message)?);
+        debug_assert!(id.id(GlobalIdType::Message).is_ok());
+        let rest_method = format!("messages/{}", id.id_unchecked());
         self.api_get(rest_method.as_str()).await
     }
 
     /// Delete a message by ID
     pub async fn delete_message(&self, id: &GlobalId) -> Result<(), Error> {
-        let rest_method = format!("messages/{}", id.id(GlobalIdType::Message)?);
+        debug_assert!(id.id(GlobalIdType::Message).is_ok());
+        let rest_method = format!("messages/{}", id.id_unchecked());
         self.api_delete(rest_method.as_str()).await
     }
 
@@ -382,7 +387,8 @@ impl Webex {
 
     /// Get available room
     pub async fn get_room(&self, id: &GlobalId) -> Result<Room, Error> {
-        let rest_method = format!("rooms/{}", id.id(GlobalIdType::Room)?);
+        debug_assert!(id.id(GlobalIdType::Room).is_ok());
+        let rest_method = format!("rooms/{}", id.id_unchecked());
         let room_reply: Result<Room, _> = self.api_get(rest_method.as_str()).await;
         match room_reply {
             Err(e) => Err(Error::with_chain(e, "room failed: ")),
@@ -395,7 +401,8 @@ impl Webex {
     /// # Errors
     /// See `get_message`
     pub async fn get_person(&self, id: &GlobalId) -> Result<Person, Error> {
-        let rest_method = format!("people/{}", id.id(GlobalIdType::Person)?);
+        debug_assert!(id.id(GlobalIdType::Person).is_ok());
+        let rest_method = format!("people/{}", id.id_unchecked());
         let people_reply: Result<Person, _> = self.api_get(rest_method.as_str()).await;
         match people_reply {
             Err(e) => Err(Error::with_chain(e, "people failed: ")),
@@ -567,13 +574,7 @@ impl Webex {
         /*
          * Authenticate to the stream
          */
-        let auth = Authorization {
-            id: Uuid::new_v4().to_string(),
-            type_: "authorization".to_string(),
-            data: AuthToken {
-                token: format!("Bearer {}", self.token),
-            },
-        };
+        let auth = Authorization::new(&self.token);
         debug!("Authenticating to stream");
         match ws_stream
             .send(TMessage::Text(serde_json::to_string(&auth).unwrap()))

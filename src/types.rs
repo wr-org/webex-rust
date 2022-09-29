@@ -4,6 +4,7 @@
 use crate::{adaptive_card::AdaptiveCard, error, error::ErrorKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use uuid::Uuid;
 
 /// Webex Teams room information
@@ -342,6 +343,21 @@ pub struct Authorization {
     pub data: AuthToken,
 }
 
+impl Authorization {
+    /// Create a new `Authorization` object from a token
+    /// id is a random UUID v4
+    #[must_use]
+    pub fn new(token: &str) -> Self {
+        Authorization {
+            id: Uuid::new_v4().to_string(),
+            type_: "authorization".to_string(),
+            data: AuthToken {
+                token: format!("Bearer {}", token),
+            },
+        }
+    }
+}
+
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct AuthToken {
@@ -400,13 +416,113 @@ pub struct Activity {
     pub vector_counters: Option<VectorCounters>,
 }
 
+/// Get what activity an [`Activity`] represents.
+#[derive(Debug, Clone)]
+pub enum ActivityType {
+    /// Message changed - see [`MessageActivity`] for details.
+    Message(MessageActivity),
+    /// The space the bot is in has changed - see [`SpaceActivity`] for details.
+    Space(SpaceActivity),
+    /// Someone started typing
+    StartTyping,
+    /// Not sure? perhaps when someone catches up in the conversation?
+    Highlight,
+    /// Unknown activity.
+    Unknown,
+}
+/// Specifics of what type of activity [`ActivityType::Message`] represents.
+#[derive(Debug, Clone)]
+pub enum MessageActivity {
+    /// A message was posted
+    Posted,
+    /// A message was forwarded
+    Shared,
+    /// A message was acknowledged
+    Acknowledged,
+    /// A message was deleted
+    Deleted,
+}
+/// Specifics of what type of activity [`ActivityType::Space`] represents.
+#[derive(Debug, Clone)]
+pub enum SpaceActivity {
+    /// Bot joined a space
+    Created,
+    /// Bot left (was kicked out of) a space
+    Left,
+    /// Space became moderated
+    Locked,
+    /// Space became unmoderated
+    Unlocked,
+
+    /// A new moderator was assigned
+    ModeratorAssigned,
+    /// A moderator was unassigned
+    ModeratorUnassigned,
+}
+impl TryFrom<&str> for MessageActivity {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, ()> {
+        match s {
+            "post" => Ok(Self::Posted),
+            "share" => Ok(Self::Shared),
+            "acknowledge" => Ok(Self::Acknowledged),
+            "delete" => Ok(Self::Deleted),
+            _ => Err(()),
+        }
+    }
+}
+impl TryFrom<&str> for SpaceActivity {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, ()> {
+        match s {
+            "created" => Ok(Self::Created),
+            "leave" => Ok(Self::Left),
+            "lock" => Ok(Self::Locked),
+            "unlock" => Ok(Self::Unlocked),
+            "assignModerator" => Ok(Self::ModeratorAssigned),
+            "unassignModerator" => Ok(Self::ModeratorUnassigned),
+            _ => Err(()),
+        }
+    }
+}
+impl MessageActivity {
+    /// True if this is a new message ([`Self::Posted`] or [`Self::Shared`]).
+    #[must_use]
+    pub fn is_created(&self) -> bool {
+        matches!(*self, Self::Posted | Self::Shared)
+    }
+}
+
 impl Event {
     /// Get the type of resource the event corresponds to
     #[must_use]
-    pub fn activity_type(&self) -> GlobalIdType {
+    pub fn activity_type(&self) -> ActivityType {
+        let activity = self.data.activity.as_ref();
         match self.data.event_type.as_str() {
-            "conversation.activity" => GlobalIdType::Message,
-            _ => GlobalIdType::Unknown,
+            "conversation.activity" => {
+                let activity_type = activity
+                    .expect("Conversation activity should have activity set")
+                    .verb
+                    .as_str();
+                if let Ok(type_) = MessageActivity::try_from(activity_type) {
+                    ActivityType::Message(type_)
+                } else if let Ok(type_) = SpaceActivity::try_from(activity_type) {
+                    ActivityType::Space(type_)
+                } else {
+                    log::error!(
+                        "Unknown activity type `{}`, returning Unknown",
+                        activity_type
+                    );
+                    ActivityType::Unknown
+                }
+            }
+            "conversation.highlight" => ActivityType::Highlight,
+            "status.start_typing" => ActivityType::StartTyping,
+
+            e => {
+                log::error!("Unknown data.event_type `{}`, returning Unknown", e);
+                ActivityType::Unknown
+            }
         }
     }
     /// A function to extract a global ID from an activity.
@@ -419,8 +535,11 @@ impl Event {
     pub fn get_global_id(&self) -> Result<GlobalId, error::Error> {
         // Safety: ID should be fine since it's from the API (guaranteed to be UUID or b64 URI).
         GlobalId::new_with_cluster_unchecked(
-            self.activity_type(),
-            self.id.clone(),
+            self.activity_type().into(),
+            self.data
+                .activity
+                .as_ref()
+                .map_or_else(|| self.id.clone(), |a| a.id.clone()),
             self.data
                 .activity
                 .as_ref()
@@ -462,6 +581,15 @@ pub enum GlobalIdType {
     /// This GlobalId represents the ID of something not currently recognised, any API requests
     /// with this GlobalId will produce an error.
     Unknown,
+}
+impl From<ActivityType> for GlobalIdType {
+    fn from(a: ActivityType) -> Self {
+        match a {
+            ActivityType::Message(_) => Self::Message,
+            ActivityType::Unknown => Self::Unknown,
+            _ => todo!(),
+        }
+    }
 }
 impl std::fmt::Display for GlobalIdType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -685,6 +813,8 @@ pub enum AlertType {
     None,
     /// This event will always generate an alert (?)
     Full,
+    /// okay, no idea...
+    Visual,
 }
 
 /// Returned from [`WebexEventStream::next()`][`crate::WebexEventStream::next()`]. Contains information about the received event.
