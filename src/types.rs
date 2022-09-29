@@ -417,7 +417,7 @@ pub struct Activity {
 }
 
 /// Get what activity an [`Activity`] represents.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActivityType {
     /// Message changed - see [`MessageActivity`] for details.
     Message(MessageActivity),
@@ -431,7 +431,7 @@ pub enum ActivityType {
     Unknown,
 }
 /// Specifics of what type of activity [`ActivityType::Message`] represents.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessageActivity {
     /// A message was posted
     Posted,
@@ -443,7 +443,7 @@ pub enum MessageActivity {
     Deleted,
 }
 /// Specifics of what type of activity [`ActivityType::Space`] represents.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpaceActivity {
     /// Bot joined a space
     Created,

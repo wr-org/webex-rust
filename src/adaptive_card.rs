@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![allow(clippy::return_self_not_must_use)]
 //! Adaptive Card implementation
 //!
 //! [Webex Teams currently supports only version 1.1](https://developer.webex.com/docs/cards)
@@ -63,7 +64,6 @@ impl AdaptiveCard {
     /// # Arguments
     ///
     /// * `card` - `CardElement` to add
-    #[must_use]
     pub fn add_body<T: Into<CardElement>>(&mut self, card: T) -> Self {
         self.body = Some(match self.body.clone() {
             None => {
@@ -82,7 +82,6 @@ impl AdaptiveCard {
     /// # Arguments
     ///
     /// * `action` - Action to add
-    #[must_use]
     pub fn add_action<T: Into<Action>>(&mut self, a: T) -> Self {
         self.actions = Some(match self.actions.clone() {
             None => {
@@ -471,12 +470,14 @@ pub enum CardElement {
 }
 
 impl From<&CardElement> for CardElement {
+    #[must_use]
     fn from(item: &CardElement) -> Self {
         item.clone()
     }
 }
 
 impl From<&mut CardElement> for CardElement {
+    #[must_use]
     fn from(item: &mut CardElement) -> Self {
         item.clone()
     }
@@ -500,7 +501,6 @@ impl CardElement {
     }
 
     /// Add element to Container
-    #[must_use]
     pub fn add_element<T: Into<CardElement>>(&mut self, element: T) -> Self {
         if let CardElement::Container { items, .. } = self {
             items.push(element.into());
@@ -509,7 +509,6 @@ impl CardElement {
     }
 
     /// Set Container Style
-    #[must_use]
     pub fn set_container_style(&mut self, s: ContainerStyle) -> Self {
         if let CardElement::Container { style, .. } = self {
             *style = Some(s);
@@ -534,7 +533,6 @@ impl CardElement {
     }
 
     /// Set Text Input Multiline
-    #[must_use]
     pub fn set_multiline(&mut self, s: bool) -> Self {
         if let CardElement::InputText { is_multiline, .. } = self {
             *is_multiline = Some(s);
@@ -573,7 +571,6 @@ impl CardElement {
     }
 
     /// Set choiceSet Style
-    #[must_use]
     pub fn set_style(&mut self, s: ChoiceInputStyle) -> Self {
         if let CardElement::InputChoiceSet { style, .. } = self {
             *style = Some(s);
@@ -582,7 +579,6 @@ impl CardElement {
     }
 
     /// Set title Style
-    #[must_use]
     pub fn set_title(&mut self, s: String) -> Self {
         if let CardElement::InputToggle { title, .. } = self {
             *title = Some(s);
@@ -591,7 +587,6 @@ impl CardElement {
     }
 
     /// Set choiceSet Style
-    #[must_use]
     pub fn set_multiselect(&mut self, b: bool) -> Self {
         if let CardElement::InputChoiceSet {
             is_multi_select, ..
@@ -627,7 +622,6 @@ impl CardElement {
     }
 
     /// Set Text Weight
-    #[must_use]
     pub fn set_weight(&mut self, w: Weight) -> Self {
         if let CardElement::TextBlock { weight, .. } = self {
             *weight = Some(w);
@@ -636,7 +630,6 @@ impl CardElement {
     }
 
     /// Set Text Font Type
-    #[must_use]
     pub fn set_font(&mut self, f: FontType) -> Self {
         if let CardElement::TextBlock { font_type, .. } = self {
             *font_type = Some(f);
@@ -645,7 +638,6 @@ impl CardElement {
     }
 
     /// Set Text Size
-    #[must_use]
     pub fn set_size(&mut self, s: Size) -> Self {
         if let CardElement::TextBlock { size, .. } = self {
             *size = Some(s);
@@ -654,7 +646,6 @@ impl CardElement {
     }
 
     /// Set Text Color
-    #[must_use]
     pub fn set_color(&mut self, c: Color) -> Self {
         if let CardElement::TextBlock { color, .. } = self {
             *color = Some(c);
@@ -663,7 +654,6 @@ impl CardElement {
     }
 
     /// Set Text wrap
-    #[must_use]
     pub fn set_wrap(&mut self, w: bool) -> Self {
         if let CardElement::TextBlock { wrap, .. } = self {
             *wrap = Some(w);
@@ -672,7 +662,6 @@ impl CardElement {
     }
 
     /// Set Text subtle
-    #[must_use]
     pub fn set_subtle(&mut self, s: bool) -> Self {
         if let CardElement::TextBlock { is_subtle, .. } = self {
             *is_subtle = Some(s);
@@ -711,7 +700,6 @@ impl CardElement {
     }
 
     /// Add fact to factSet
-    #[must_use]
     pub fn add_key_value<T: Into<String>, S: Into<String>>(&mut self, title: T, value: S) -> Self {
         match self {
             CardElement::FactSet { facts, .. } => facts.push(Fact {
@@ -740,7 +728,6 @@ impl CardElement {
     }
 
     /// Add column to columnSet
-    #[must_use]
     pub fn add_column(&mut self, column: Column) -> Self {
         if let CardElement::ColumnSet { columns, .. } = self {
             columns.push(column);
@@ -749,7 +736,6 @@ impl CardElement {
     }
 
     /// Set Separator
-    #[must_use]
     pub fn set_separator(&mut self, s: bool) -> Self {
         match self {
             CardElement::TextBlock { separator, .. }
@@ -767,7 +753,6 @@ impl CardElement {
     }
 
     /// Set Spacing
-    #[must_use]
     pub fn set_spacing(&mut self, s: Spacing) -> Self {
         match self {
             CardElement::TextBlock { spacing, .. }
@@ -793,7 +778,6 @@ impl CardElement {
     }
 
     /// Add action to actionSet
-    #[must_use]
     pub fn add_action_to_set(&mut self, action: Action) -> Self {
         if let CardElement::ActionSet { actions, .. } = self {
             actions.push(action);
