@@ -42,7 +42,7 @@ use crate::adaptive_card::AdaptiveCard;
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use log::{debug, info, trace, warn};
+use log::{debug, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::{net::TcpStream, runtime::Handle};
@@ -168,6 +168,43 @@ impl WebexEventStream {
             }
         }
     }
+
+    pub(crate) async fn auth(
+        ws_stream: &mut WStream,
+        token: &str,
+    ) -> Result<(), Error> {
+        /*
+         * Authenticate to the stream
+         */
+        let auth = Authorization::new(token);
+        debug!("Authenticating to stream");
+        match ws_stream
+            .send(TMessage::Text(serde_json::to_string(&auth).unwrap()))
+            .await
+        {
+            Ok(_) => {
+                /*
+                 * The next thing back should be a pong
+                 */
+                match ws_stream.next().await {
+                    Some(msg) => match msg {
+                        Ok(msg) => match msg {
+                            TMessage::Ping(_) | TMessage::Pong(_) => {
+                                debug!("Authentication succeeded");
+                                Ok(())
+                            }
+                            _ => Err(format!("Received {:?} in reply to auth message", msg).into()),
+                        },
+                        Err(e) => Err(format!("Received error from websocket: {}", e).into()),
+                    },
+                    None => Err("Websocket closed".to_string().into()),
+                }
+            }
+            Err(e) => {
+                Err(ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
+            }
+        }
+    }
 }
 
 impl Webex {
@@ -204,7 +241,7 @@ impl Webex {
 
         let devices_url = match webex.get_mercury_url() {
             Ok(url) => {
-                info!("Fetched mercury url {}", url);
+                trace!("Fetched mercury url {}", url);
                 url
             }
             Err(e) => {
@@ -226,31 +263,28 @@ impl Webex {
         async fn connect_device(
             s: &Webex,
             device: DeviceData,
-        ) -> Option<Result<WebexEventStream, Error>> {
-            let ws_url = device.ws_url?;
-            let url = match url::Url::parse(ws_url.as_str()) {
-                Ok(u) => u,
-                Err(e) => {
-                    warn!("Failed to parse {:?}", e);
-                    return None;
-                }
+        ) -> Result<WebexEventStream, Error> {
+            let ws_url = match device.ws_url {
+                Some(url) => url,
+                None => return Err(Error::from("Device has no ws_url")),
             };
+            let url = url::Url::parse(ws_url.as_str()).map_err(|_| Error::from("Failed to parse ws_url"))?;
             debug!("Connecting to {:?}", url);
             match connect_async(url.clone()).await {
                 Ok((mut ws_stream, _response)) => {
                     debug!("Connected to {}", url);
-                    s.ws_auth(&mut ws_stream).await.ok()?;
+                    WebexEventStream::auth(&mut ws_stream, &s.token).await?;
                     debug!("Authenticated");
                     let timeout = Duration::from_secs(20);
-                    Some(Ok(WebexEventStream {
+                    Ok(WebexEventStream {
                         ws_stream,
                         timeout,
                         is_open: true,
-                    }))
+                    })
                 }
                 Err(e) => {
                     warn!("Failed to connect to {:?}: {:?}", url, e);
-                    None
+                    Err(ErrorKind::Tungstenite(e, "Failed to connect to ws_url".to_string()).into())
                 }
             }
         }
@@ -271,14 +305,14 @@ impl Webex {
         });
 
         for device in devices {
-            if let Some(event_stream) = connect_device(self, device).await {
-                return event_stream;
+            if let Ok(event_stream) = connect_device(self, device).await {
+                return Ok(event_stream);
             }
         }
 
         // Failed to connect to any existing devices, creating new one
-        if let Some(event_stream) = connect_device(self, self.setup_devices().await?).await {
-            event_stream
+        if let Ok(event_stream) = connect_device(self, self.setup_devices().await?).await {
+            Ok(event_stream)
         } else {
             Err(Error::from(
                 "Failed to connect to any existing device and newly created device",
@@ -565,43 +599,6 @@ impl Webex {
 
     async fn setup_devices(&self) -> Result<DeviceData, Error> {
         self.api_post("devices", self.device.clone()).await
-    }
-
-    async fn ws_auth(
-        &self,
-        ws_stream: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
-    ) -> Result<(), Error> {
-        /*
-         * Authenticate to the stream
-         */
-        let auth = Authorization::new(&self.token);
-        debug!("Authenticating to stream");
-        match ws_stream
-            .send(TMessage::Text(serde_json::to_string(&auth).unwrap()))
-            .await
-        {
-            Ok(_) => {
-                /*
-                 * The next thing back should be a pong
-                 */
-                match ws_stream.next().await {
-                    Some(msg) => match msg {
-                        Ok(msg) => match msg {
-                            TMessage::Ping(_) | TMessage::Pong(_) => {
-                                debug!("Authentication succeeded");
-                                Ok(())
-                            }
-                            _ => Err(format!("Received {:?} in reply to auth message", msg).into()),
-                        },
-                        Err(e) => Err(format!("Received error from websocket: {}", e).into()),
-                    },
-                    None => Err("Websocket closed".to_string().into()),
-                }
-            }
-            Err(e) => {
-                Err(ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
-            }
-        }
     }
 }
 
