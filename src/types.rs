@@ -754,21 +754,17 @@ impl GlobalId {
         Ok(())
     }
     /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
-    /// Takes an expected type to ensure that the ID is for the correct type of object.
+    /// Takes an expected type to ensure that the ID is for the correct type of object, but only
+    /// performs that checking on debug builds as an incorrect ID type is not a hard error.
     pub fn id(&self, expected: GlobalIdType) -> Result<&str, error::Error> {
+        #[cfg(debug_assertions)]
         if self.type_ == expected {
-            Ok(self.id_unchecked())
+            Ok(&self.id)
         } else {
             Err(ErrorKind::IncorrectId(expected, self.type_).into())
         }
-    }
-    /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
-    /// Does not check the ID type, useful when performance is critical.
-    /// It is always safe to use this rather than `.id()` - the worst that'll happen is a 404 error
-    /// from the API.
-    #[must_use]
-    pub fn id_unchecked(&self) -> &str {
-        &self.id
+        #[cfg(not(debug_assertions))]
+        Ok(&self.id)
     }
 }
 
