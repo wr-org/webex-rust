@@ -423,7 +423,14 @@ pub enum ActivityType {
     Message(MessageActivity),
     /// The space the bot is in has changed - see [`SpaceActivity`] for details.
     Space(SpaceActivity),
-    /// Someone started typing
+    /// Meeting event.
+    /// TODO: This needs to be broken down like `Message` and `Space`, if anyone cares.
+    Locus,
+    /// Call event.
+    /// TODO: This may need to be broken down.
+    /// May provide details about call insights/recording?
+    Janus,
+    /// Someone started typing.
     StartTyping,
     /// Not sure? perhaps when someone catches up in the conversation?
     Highlight,
@@ -443,12 +450,20 @@ pub enum MessageActivity {
     Deleted,
 }
 /// Specifics of what type of activity [`ActivityType::Space`] represents.
+/// TODO: should we merge [`Self::Created`]/[`Self::Joined`]?
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpaceActivity {
-    /// Bot joined a space
+    /// A new space was created with the bot
     Created,
+    /// Bot was added to a space
+    Joined,
     /// Bot left (was kicked out of) a space
     Left,
+    /// Space was changed (i.e. name change, cover image changed, space picture changed).
+    /// Also includes meeting changes (meeting name or schedule)
+    Changed,
+    /// New meeting scheduled
+    MeetingScheduled,
     /// Space became moderated
     Locked,
     /// Space became unmoderated
@@ -476,9 +491,12 @@ impl TryFrom<&str> for SpaceActivity {
     fn try_from(s: &str) -> Result<Self, ()> {
         match s {
             "created" => Ok(Self::Created),
+            "add" => Ok(Self::Joined),
             "leave" => Ok(Self::Left),
             "lock" => Ok(Self::Locked),
             "unlock" => Ok(Self::Unlocked),
+            "update" | "assign" | "unassign" => Ok(Self::Changed),
+            "schedule" => Ok(Self::MeetingScheduled),
             "assignModerator" => Ok(Self::ModeratorAssigned),
             "unassignModerator" => Ok(Self::ModeratorUnassigned),
             _ => Err(()),
@@ -494,13 +512,17 @@ impl MessageActivity {
 }
 
 impl Event {
-    /// Get the type of resource the event corresponds to
+    /// Get the type of resource the event corresponds to.
+    /// Also contains details about the event action for some event types.
+    /// For more details, check [`ActivityType`].
     #[must_use]
     pub fn activity_type(&self) -> ActivityType {
-        let activity = self.data.activity.as_ref();
         match self.data.event_type.as_str() {
             "conversation.activity" => {
-                let activity_type = activity
+                let activity_type = self
+                    .data
+                    .activity
+                    .as_ref()
                     .expect("Conversation activity should have activity set")
                     .verb
                     .as_str();
@@ -518,6 +540,8 @@ impl Event {
             }
             "conversation.highlight" => ActivityType::Highlight,
             "status.start_typing" => ActivityType::StartTyping,
+            "locus.difference" => ActivityType::Locus,
+            "janus.user_sessions" => ActivityType::Janus,
 
             e => {
                 log::error!("Unknown data.event_type `{}`, returning Unknown", e);
