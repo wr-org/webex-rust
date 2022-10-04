@@ -434,8 +434,12 @@ pub enum ActivityType {
     StartTyping,
     /// Not sure? perhaps when someone catches up in the conversation?
     Highlight,
-    /// Unknown activity.
-    Unknown,
+    /// Unknown activity. Contains a representation of the string that failed to parse - unknown
+    /// activities will contain `event.data.event_type`, otherwise if it's an Unknown
+    /// `conversation.activity` type (belonging in Message or Space), the string will be
+    /// `"conversation.activity.{event.data.activity.verb}"`, for example it would be
+    /// `"conversation.activity.post"` for `Message(MessageActivity::Posted)`
+    Unknown(String),
 }
 /// Specifics of what type of activity [`ActivityType::Message`] represents.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -490,7 +494,7 @@ impl TryFrom<&str> for SpaceActivity {
     type Error = ();
     fn try_from(s: &str) -> Result<Self, ()> {
         match s {
-            "created" => Ok(Self::Created),
+            "create" => Ok(Self::Created),
             "add" => Ok(Self::Joined),
             "leave" => Ok(Self::Left),
             "lock" => Ok(Self::Locked),
@@ -535,7 +539,7 @@ impl Event {
                         "Unknown activity type `{}`, returning Unknown",
                         activity_type
                     );
-                    ActivityType::Unknown
+                    ActivityType::Unknown(format!("conversation.activity.{}", activity_type))
                 }
             }
             "conversation.highlight" => ActivityType::Highlight,
@@ -545,7 +549,7 @@ impl Event {
 
             e => {
                 log::error!("Unknown data.event_type `{}`, returning Unknown", e);
-                ActivityType::Unknown
+                ActivityType::Unknown(e.to_string())
             }
         }
     }
@@ -756,15 +760,13 @@ impl GlobalId {
     /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
     /// Takes an expected type to ensure that the ID is for the correct type of object, but only
     /// performs that checking on debug builds as an incorrect ID type is not a hard error.
+    #[inline]
     pub fn id(&self, expected: GlobalIdType) -> Result<&str, error::Error> {
-        #[cfg(debug_assertions)]
-        if self.type_ == expected {
+        if !cfg!(debug_assertions) || self.type_ == expected {
             Ok(&self.id)
         } else {
             Err(ErrorKind::IncorrectId(expected, self.type_).into())
         }
-        #[cfg(not(debug_assertions))]
-        Ok(&self.id)
     }
 }
 

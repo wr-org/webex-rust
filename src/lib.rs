@@ -396,7 +396,8 @@ impl Webex {
     /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
     /// * (New) [`ErrorKind::IncorrectId`] - this function has been passed a ``GlobalId`` that does not
     /// correspond to a message. This error will only occur in debug builds
-    /// (`#[cfg(debug_assertions)]`) for performance.
+    /// (`#[cfg(debug_assertions)]` enabled) for performance reasons, and because an incorrect ID
+    /// will not cause crashes - this is purely to ease debugging if something goes wrong
     pub async fn get_message(&self, id: &GlobalId) -> Result<Message, Error> {
         let rest_method = format!("messages/{}", id.id(GlobalIdType::Message)?);
         self.api_get(rest_method.as_str()).await
