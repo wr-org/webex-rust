@@ -336,8 +336,8 @@ impl Webex {
             catalogs = Some(
                 s.spawn(move || {
                     let orgs = rt.block_on(self.get_orgs())?;
-                    if orgs.len() != 1 {
-                        panic!("Can only get mercury URL if account is part of exactly one org");
+                    if orgs.is_empty() {
+                        return Err(error::Error::from("Can't get mercury URL with no orgs"));
                     }
                     let org_id = &orgs[0].id;
                     let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
