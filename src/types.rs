@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 /// Webex Teams room information
 #[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Room {
     /// A unique identifier for the room.
     pub id: String,
@@ -21,25 +22,21 @@ pub struct Room {
     #[serde(rename = "type")]
     pub room_type: String,
     /// Whether the room is moderated (locked) or not.
-    #[serde(rename = "isLocked")]
     pub is_locked: bool,
     /// The ID for the team with which this room is associated.
-    #[serde(rename = "teamId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
     /// The date and time of the room's last activity.
-    #[serde(rename = "lastActivity")]
     pub last_activity: String,
     /// The ID of the person who created this room.
-    #[serde(rename = "creatorId")]
     pub creator_id: String,
     /// The date and time the room was created.
     pub created: String,
 }
 
-/// API reply holding the room vector
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct RoomsReply {
+pub(crate) struct RoomsReply {
     pub items: Vec<Room>,
 }
 
@@ -55,17 +52,14 @@ pub struct Organization {
     pub created: String,
 }
 
-/// API reply holding the orgs a person belongs to
 #[derive(Deserialize, Serialize, Debug)]
-pub struct OrganizationReply {
-    /// List of orgs returned
+pub(crate) struct OrganizationReply {
     pub items: Vec<Organization>,
 }
 
-#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct CatalogReply {
+pub(crate) struct CatalogReply {
     pub service_links: Catalog,
 }
 #[allow(missing_docs)]
@@ -98,18 +92,19 @@ pub struct Catalog {
 
 /// Outgoing message
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageOut {
     /// The parent message to reply to.
-    #[serde(rename = "parentId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
     /// The room ID of the message.
-    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonEmail", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text. The maximum message length is 7439 bytes.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,24 +122,25 @@ pub struct MessageOut {
 
 /// Webex Teams message information
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
     /// The unique identifier for the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// The room ID of the message.
-    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The room type.
     ///
     /// direct - 1:1 room
     /// group - group room
-    #[serde(rename = "roomType", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_type: Option<String>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonEmail", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,16 +155,16 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
     /// The person ID of the message author.
-    #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The email address of the message author.
-    #[serde(rename = "personEmail", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_email: Option<String>,
     /// People IDs for anyone mentioned in the message.
-    #[serde(rename = "mentionedPeople", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentioned_people: Option<Vec<String>>,
     /// Group names for the groups mentioned in the message.
-    #[serde(rename = "mentionedGroups", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentioned_groups: Option<Vec<String>>,
     /// Message content attachments attached to the message.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -181,17 +177,13 @@ pub struct Message {
     pub updated: Option<String>,
 }
 
-/// API Message reply
-#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct MessagesReply {
+pub(crate) struct MessagesReply {
     pub items: Vec<Message>,
 }
 
-/// API Empty reply
-#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct EmptyReply {}
+pub(crate) struct EmptyReply {}
 
 /// API Error
 #[allow(missing_docs)]
@@ -202,7 +194,7 @@ pub struct Error {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct DevicesReply {
+pub(crate) struct DevicesReply {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub devices: Option<Vec<DeviceData>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -339,8 +331,8 @@ pub struct DeviceSettings {
 pub struct Authorization {
     pub id: String,
     #[serde(rename = "type")]
-    pub type_: String,
-    pub data: AuthToken,
+    pub auth_type: String,
+    data: AuthToken,
 }
 
 impl Authorization {
@@ -350,7 +342,7 @@ impl Authorization {
     pub fn new(token: &str) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
-            type_: "authorization".to_string(),
+            auth_type: "authorization".to_string(),
             data: AuthToken {
                 token: format!("Bearer {}", token),
             },
@@ -358,23 +350,19 @@ impl Authorization {
     }
 }
 
-#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
-pub struct AuthToken {
+pub(crate) struct AuthToken {
     pub token: String,
 }
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Actor {
     pub id: String,
-    #[serde(rename = "objectType")]
     pub object_type: String,
-    #[serde(rename = "displayName")]
     pub display_name: String,
-    #[serde(rename = "orgId")]
     pub org_id: Option<String>,
-    #[serde(rename = "emailAddress")]
     pub email_address: Option<String>,
     #[serde(rename = "entryUUID")]
     pub entry_uuid: String,
@@ -384,12 +372,12 @@ pub struct Actor {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct EventData {
-    #[serde(rename = "eventType")]
     pub event_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<Actor>,
-    #[serde(rename = "conversationId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activity: Option<Activity>,
@@ -397,9 +385,9 @@ pub struct EventData {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Activity {
     pub id: String,
-    #[serde(rename = "objectType")]
     pub object_type: String,
     pub url: String,
     pub published: String,
@@ -408,11 +396,11 @@ pub struct Activity {
     pub object: Object,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<Target>,
-    #[serde(rename = "clientTempId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_temp_id: Option<String>,
-    #[serde(rename = "encryptionKeyUrl", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_url: Option<String>,
-    #[serde(rename = "vectorCounters", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vector_counters: Option<VectorCounters>,
 }
 
@@ -563,15 +551,11 @@ impl Event {
     /// all IDs).
     pub fn get_global_id(&self) -> Result<GlobalId, error::Error> {
         // Safety: ID should be fine since it's from the API (guaranteed to be UUID or b64 URI).
+        let self_activity = self.data.activity.as_ref();
         GlobalId::new_with_cluster_unchecked(
             self.activity_type().into(),
-            self.data
-                .activity
-                .as_ref()
-                .map_or_else(|| self.id.clone(), |a| a.id.clone()),
-            self.data
-                .activity
-                .as_ref()
+            self_activity.map_or_else(|| self.id.clone(), |a| a.id.clone()),
+            self_activity
                 .and_then(|a| a.target.as_ref())
                 .and_then(Target::get_cluster)
                 .as_deref(),
@@ -616,7 +600,10 @@ impl From<ActivityType> for GlobalIdType {
         match a {
             ActivityType::Message(_) => Self::Message,
             ActivityType::Unknown(_) => Self::Unknown,
-            _ => todo!(),
+            a => {
+                log::error!("Failed to convert {:?} to GlobalIdType, this may cause errors later", a);
+                Self::Unknown
+            }
         }
     }
 }
@@ -759,14 +746,6 @@ impl GlobalId {
     /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
     /// Takes an expected type to ensure that the ID is for the correct type of object, but only
     /// performs that checking on debug builds as an incorrect ID type is not a hard error.
-    ///
-    /// ```should_panic
-    /// # use webex::*;
-    /// let id = GlobalId::new(GlobalIdType::Message, "id".to_string()).unwrap();
-    /// // Panics, because expected type `Room` doesn't match actual type `Message`
-    /// // Wouldn't panic in release mode.
-    /// id.id(GlobalIdType::Room).expect("Get ID of type room");
-    /// ```
     #[inline]
     pub fn id(&self, expected: GlobalIdType) -> Result<&str, error::Error> {
         if !cfg!(debug_assertions) || self.type_ == expected {
@@ -787,26 +766,25 @@ pub struct VectorCounters {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Target {
     pub id: String,
-    #[serde(rename = "objectType")]
     pub object_type: String,
     pub url: String,
     pub participants: MiscItems,
     pub activities: MiscItems,
     pub tags: Vec<String>,
-    #[serde(rename = "globalId")]
     pub global_id: String,
 }
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Object {
-    #[serde(rename = "objectType")]
     pub object_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<MiscItems>,
@@ -878,6 +856,7 @@ pub struct Attachment {
 
 /// Attachment action details
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct AttachmentAction {
     /// A unique identifier for the action.
     pub id: String,
@@ -885,16 +864,16 @@ pub struct AttachmentAction {
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub action_type: Option<String>,
     /// The parent message the attachment action was performed on.
-    #[serde(rename = "messageId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
     /// The action's inputs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inputs: Option<HashMap<String, String>>,
     /// The ID of the person who performed the action.
-    #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The ID of the room the action was performed within.
-    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The date and time the action was created.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -950,7 +929,7 @@ pub struct Person {
 
 /// Phone number information
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(default)]
 pub struct PhoneNumber {
     /// Phone number type
     #[serde(rename = "type")]

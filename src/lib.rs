@@ -527,12 +527,16 @@ impl Webex {
                 }
                 match resp.status() {
                     hyper::StatusCode::LOCKED | hyper::StatusCode::TOO_MANY_REQUESTS => {
-                        warn!("Limited");
                         let retry_after = resp
                             .headers()
                             .get("Retry-After")
                             .and_then(|s| s.to_str().ok())
                             .and_then(|t| t.parse::<i64>().ok());
+                        warn!(
+                            "Limited calling {} {}/{}",
+                            http_method, prefix, rest_method_trimmed
+                        );
+                        debug!("Retry-After: {:?}", retry_after);
                         Err(ErrorKind::Limited(resp.status(), retry_after).into())
                     }
                     status if !status.is_success() => {
