@@ -348,7 +348,7 @@ impl Authorization {
     /// id is a random UUID v4
     #[must_use]
     pub fn new(token: &str) -> Self {
-        Authorization {
+        Self {
             id: Uuid::new_v4().to_string(),
             type_: "authorization".to_string(),
             data: AuthToken {
@@ -511,7 +511,7 @@ impl TryFrom<&str> for SpaceActivity {
 impl MessageActivity {
     /// True if this is a new message ([`Self::Posted`] or [`Self::Shared`]).
     #[must_use]
-    pub fn is_created(&self) -> bool {
+    pub const fn is_created(&self) -> bool {
         matches!(*self, Self::Posted | Self::Shared)
     }
 }
@@ -626,11 +626,11 @@ impl std::fmt::Display for GlobalIdType {
             f,
             "{}",
             match self {
-                GlobalIdType::Message => "MESSAGE",
-                GlobalIdType::Person => "PEOPLE",
-                GlobalIdType::Room => "ROOM",
-                GlobalIdType::AttachmentAction => "ATTACHMENT_ACTION",
-                GlobalIdType::Unknown => "<UNKNOWN>",
+                Self::Message => "MESSAGE",
+                Self::Person => "PEOPLE",
+                Self::Room => "ROOM",
+                Self::AttachmentAction => "ATTACHMENT_ACTION",
+                Self::Unknown => "<UNKNOWN>",
             }
         )
     }
@@ -763,6 +763,8 @@ impl GlobalId {
     /// ```should_panic
     /// # use webex::*;
     /// let id = GlobalId::new(GlobalIdType::Message, "id".to_string()).unwrap();
+    /// // Panics, because expected type `Room` doesn't match actual type `Message`
+    /// // Wouldn't panic in release mode.
     /// id.id(GlobalIdType::Room).expect("Get ID of type room");
     /// ```
     #[inline]

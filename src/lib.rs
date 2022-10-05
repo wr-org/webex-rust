@@ -1,5 +1,8 @@
 #![deny(missing_docs)]
-#![deny(clippy::all, clippy::pedantic)]
+#![deny(clippy::all, clippy::pedantic, clippy::nursery)]
+// clippy::use_self fixed in https://github.com/rust-lang/rust-clippy/pull/9454
+// TODO: remove this when clippy bug fixed in stable
+#![allow(clippy::use_self)]
 #![allow(clippy::missing_errors_doc)]
 #![cfg_attr(test, deny(warnings))]
 #![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
@@ -115,7 +118,7 @@ impl WebexEventStream {
                 Ok(next_result) => match next_result {
                     Some(msg) => match msg {
                         Ok(msg) => {
-                            if let Some(h_msg) = self.handle_message(msg).await? {
+                            if let Some(h_msg) = self.handle_message(msg)? {
                                 return Ok(h_msg);
                             }
                             // `None` messages still reset the timeout (e.g. Ping to keep alive)
@@ -133,7 +136,7 @@ impl WebexEventStream {
         }
     }
 
-    async fn handle_message(&mut self, msg: TMessage) -> Result<Option<Event>, Error> {
+    fn handle_message(&mut self, msg: TMessage) -> Result<Option<Event>, Error> {
         match msg {
             TMessage::Binary(bytes) => match std::str::from_utf8(&bytes) {
                 Ok(json) => match serde_json::from_str(json) {
@@ -169,10 +172,7 @@ impl WebexEventStream {
         }
     }
 
-    pub(crate) async fn auth(
-        ws_stream: &mut WStream,
-        token: &str,
-    ) -> Result<(), Error> {
+    pub(crate) async fn auth(ws_stream: &mut WStream, token: &str) -> Result<(), Error> {
         /*
          * Authenticate to the stream
          */
@@ -216,7 +216,7 @@ impl Webex {
         let https = HttpsConnector::new();
         let client = Client::builder().build::<_, hyper::Body>(https);
 
-        let mut webex = Webex {
+        let mut webex = Self {
             client,
             token: token.to_string(),
             bearer: format!("Bearer {}", token),
@@ -260,15 +260,13 @@ impl Webex {
         // Helper function to connect to a device
         // refactored out to make it easier to loop through all devices and also lazily create a
         // new one if needed
-        async fn connect_device(
-            s: &Webex,
-            device: DeviceData,
-        ) -> Result<WebexEventStream, Error> {
+        async fn connect_device(s: &Webex, device: DeviceData) -> Result<WebexEventStream, Error> {
             let ws_url = match device.ws_url {
                 Some(url) => url,
                 None => return Err(Error::from("Device has no ws_url")),
             };
-            let url = url::Url::parse(ws_url.as_str()).map_err(|_| Error::from("Failed to parse ws_url"))?;
+            let url = url::Url::parse(ws_url.as_str())
+                .map_err(|_| Error::from("Failed to parse ws_url"))?;
             debug!("Connecting to {:?}", url);
             match connect_async(url.clone()).await {
                 Ok((mut ws_stream, _response)) => {
@@ -373,7 +371,10 @@ impl Webex {
     /// # Errors
     /// See [`Webex::get_message()`] errors.
     pub async fn get_attachment_action(&self, id: &GlobalId) -> Result<AttachmentAction, Error> {
-        let rest_method = format!("attachment/actions/{}", id.id(GlobalIdType::AttachmentAction)?);
+        let rest_method = format!(
+            "attachment/actions/{}",
+            id.id(GlobalIdType::AttachmentAction)?
+        );
         self.api_get(rest_method.as_str()).await
     }
 
@@ -474,7 +475,7 @@ impl Webex {
         self.rest_api("DELETE", rest_method, body).await
     }
 
-    async fn api_post<T: DeserializeOwned, U: Serialize>(
+    async fn api_post<T: DeserializeOwned, U: Serialize + Send>(
         &self,
         rest_method: &str,
         body: U,
@@ -482,7 +483,7 @@ impl Webex {
         self.rest_api("POST", rest_method, Some(body)).await
     }
 
-    async fn rest_api<T: DeserializeOwned, U: Serialize>(
+    async fn rest_api<T: DeserializeOwned, U: Serialize + Send>(
         &self,
         http_method: &str,
         rest_method: &str,
@@ -504,7 +505,7 @@ impl Webex {
         }
     }
 
-    async fn call_web_api_raw<T: Serialize>(
+    async fn call_web_api_raw<T: Serialize + Send>(
         &self,
         http_method: &str,
         rest_method: &str,
@@ -563,32 +564,22 @@ impl Webex {
     async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
         // https://developer.webex.com/docs/api/v1/devices
         match self.api_get::<DevicesReply>("devices").await {
-            Ok(dd) => match dd.devices {
-                Some(devices) => Ok(devices),
-                None => {
-                    debug!("Chaining one-time device setup from devices query");
-                    match self.setup_devices().await {
-                        Ok(device) => Ok(vec![device]),
-                        Err(e) => Err(e),
-                    }
-                }
-            },
+            #[rustfmt::skip]
+            Ok(DevicesReply { devices: Some(devices), .. }) => Ok(devices),
+            Ok(_) => {
+                debug!("Chaining one-time device setup from devices query");
+                self.setup_devices().await.map(|device| vec![device])
+            }
             Err(e) => match e {
                 Error(ErrorKind::Status(s) | ErrorKind::StatusText(s, _), _) => {
                     if s == hyper::StatusCode::NOT_FOUND {
                         debug!("No devices found, creating new one");
-                        match self.setup_devices().await {
-                            Ok(device) => Ok(vec![device]),
-                            Err(e) => Err(e),
-                        }
+                        self.setup_devices().await.map(|device| vec![device])
                     } else {
                         Err(Error::with_chain(e, "Can't decode devices reply"))
                     }
                 }
-                Error(ErrorKind::Limited(_, t), _) => Err(Error::with_chain(
-                    e,
-                    format!("We are hitting the API limit, retry after: {:?}", t),
-                )),
+                Error(ErrorKind::Limited(_, _), _) => Err(e),
                 _ => Err(format!("Can't decode devices reply: {}", e).into()),
             },
         }
@@ -601,16 +592,16 @@ impl Webex {
 
 impl From<&AttachmentAction> for MessageOut {
     fn from(action: &AttachmentAction) -> Self {
-        MessageOut {
+        Self {
             room_id: action.room_id.clone(),
-            ..MessageOut::default()
+            ..Self::default()
         }
     }
 }
 
 impl From<&Message> for MessageOut {
     fn from(msg: &Message) -> Self {
-        let mut new_msg: Self = MessageOut::default();
+        let mut new_msg = Self::default();
 
         if msg.room_type == Some("group".to_string()) {
             new_msg.room_id = msg.room_id.clone();

@@ -1,6 +1,6 @@
+use crate::types::GlobalIdType;
 use hyper::{Error as HyperError, StatusCode};
 use serde_json::error::Error as SerdeError;
-use crate::types::GlobalIdType;
 
 error_chain! {
     foreign_links {
