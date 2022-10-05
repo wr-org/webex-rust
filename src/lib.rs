@@ -48,7 +48,7 @@ use hyper_tls::HttpsConnector;
 use log::{debug, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, time::Duration};
-use tokio::{net::TcpStream, runtime::Handle};
+use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as TMessage, MaybeTlsStream, WebSocketStream,
 };
@@ -75,6 +75,7 @@ type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 /// Webex API Client
 #[derive(Clone)]
+#[must_use]
 pub struct Webex {
     client: WebClient,
     bearer: String,
@@ -211,8 +212,7 @@ impl Webex {
     /// Constructs a new Webex Teams context from a token
     /// Tokens can be obtained when creating a bot, see <https://developer.webex.com/my-apps> for
     /// more information and to create your own Webex bots.
-    #[must_use]
-    pub fn new(token: &str) -> Self {
+    pub async fn new(token: &str) -> Self {
         let https = HttpsConnector::new();
         let client = Client::builder().build::<_, hyper::Body>(https);
 
@@ -239,7 +239,7 @@ impl Webex {
             .host_prefix
             .insert("limited/catalog".to_string(), U2C_HOST_PREFIX.to_string());
 
-        let devices_url = match webex.get_mercury_url() {
+        let devices_url = match webex.get_mercury_url().await {
             Ok(url) => {
                 trace!("Fetched mercury url {}", url);
                 url
@@ -318,37 +318,21 @@ impl Webex {
         }
     }
 
-    fn get_mercury_url(&self) -> Result<String, error::Error> {
+    async fn get_mercury_url(&self) -> Result<String, error::Error> {
         // Steps:
         // 1. Get org id by GET /v1/organizations
         // 2. Get urls json from https://u2c.wbx2.com/u2c/api/v1/limited/catalog?orgId=[org id]
         // 3. mercury url is urls["serviceLinks"]["wdm"]
-        //
-        // We need to spawn a new thread because to create a new async executor, we can't be inside
-        // an executor ourselves. Yes it's hacky, no there's no other way (apart from making
-        // Webex::new async).
 
-        let mut catalogs = None;
-        std::thread::scope(|s| {
-            let rt = Handle::current();
-            catalogs = Some(
-                s.spawn(move || {
-                    let orgs = rt.block_on(self.get_orgs())?;
-                    if orgs.is_empty() {
-                        return Err(error::Error::from("Can't get mercury URL with no orgs"));
-                    }
-                    let org_id = &orgs[0].id;
-                    let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
-                    rt.block_on(self.api_get::<CatalogReply>(&api_url))
-                })
-                .join()
-                .expect("Shouldn't panic"),
-            );
-        });
-        Ok(catalogs
-            .expect("Should have run async code")?
-            .service_links
-            .wdm)
+        let orgs = self.get_orgs().await?;
+        if orgs.is_empty() {
+            return Err(error::Error::from("Can't get mercury URL with no orgs"));
+        }
+        let org_id = &orgs[0].id;
+        let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
+        let catalogs = self.api_get::<CatalogReply>(&api_url).await?;
+
+        Ok(catalogs.service_links.wdm)
     }
 
     /// Get list of organizations
