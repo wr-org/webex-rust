@@ -439,6 +439,7 @@ pub enum ActivityType {
     /// `conversation.activity` type (belonging in Message or Space), the string will be
     /// `"conversation.activity.{event.data.activity.verb}"`, for example it would be
     /// `"conversation.activity.post"` for `Message(MessageActivity::Posted)`
+    ///
     Unknown(String),
 }
 /// Specifics of what type of activity [`ActivityType::Message`] represents.
@@ -614,7 +615,7 @@ impl From<ActivityType> for GlobalIdType {
     fn from(a: ActivityType) -> Self {
         match a {
             ActivityType::Message(_) => Self::Message,
-            ActivityType::Unknown => Self::Unknown,
+            ActivityType::Unknown(_) => Self::Unknown,
             _ => todo!(),
         }
     }
@@ -737,11 +738,9 @@ impl GlobalId {
             || decoded_parts[0] != "ciscospark:"
             || !decoded_parts[1].is_empty()
         {
-            return Err(ErrorKind::Msg(
-                "Expected base64 ID to be in the form ciscospark://[cluster]/[type]/[id]"
-                    .to_string(),
-            )
-            .into());
+            return Err(error::Error::from(
+                "Expected base64 ID to be in the form ciscospark://[cluster]/[type]/[id]",
+            ));
         } else if let Some(expected_cluster) = cluster {
             if decoded_parts[2] != expected_cluster {
                 // TODO - this won't happen when we fetch the cluster ourselves, since we get it from
@@ -760,6 +759,12 @@ impl GlobalId {
     /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
     /// Takes an expected type to ensure that the ID is for the correct type of object, but only
     /// performs that checking on debug builds as an incorrect ID type is not a hard error.
+    ///
+    /// ```should_panic
+    /// # use webex::*;
+    /// let id = GlobalId::new(GlobalIdType::Message, "id".to_string()).unwrap();
+    /// id.id(GlobalIdType::Room).expect("Get ID of type room");
+    /// ```
     #[inline]
     pub fn id(&self, expected: GlobalIdType) -> Result<&str, error::Error> {
         if !cfg!(debug_assertions) || self.type_ == expected {
@@ -950,4 +955,57 @@ pub struct PhoneNumber {
     pub number_type: String,
     /// Phone number
     pub value: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn create_event(event_type: &str, activity_verb: &str) -> Event {
+        Event {
+            data: EventData {
+                event_type: event_type.to_string(),
+                activity: Some(Activity {
+                    verb: activity_verb.to_string(),
+                    ..Activity::default()
+                }),
+                ..EventData::default()
+            },
+            ..Event::default()
+        }
+    }
+
+    #[test]
+    fn event_parsing() {
+        let test_events = [
+            (
+                "conversation.activity",
+                "post",
+                ActivityType::Message(MessageActivity::Posted),
+            ),
+            (
+                "conversation.activity",
+                "share",
+                ActivityType::Message(MessageActivity::Shared),
+            ),
+            (
+                "conversation.activity",
+                "unknown",
+                ActivityType::Unknown("conversation.activity.unknown".to_string()),
+            ),
+            ("unknown", "", ActivityType::Unknown("unknown".to_string())),
+            ("conversation.highlight", "", ActivityType::Highlight),
+        ];
+        for test_e in test_events {
+            let event = create_event(test_e.0, test_e.1);
+            let result = test_e.2;
+            assert_eq!(event.activity_type(), result);
+        }
+    }
+
+    #[test]
+    fn msg_is_created() {
+        assert!(MessageActivity::Posted.is_created());
+        assert!(MessageActivity::Shared.is_created());
+        assert!(!MessageActivity::Deleted.is_created());
+    }
 }
