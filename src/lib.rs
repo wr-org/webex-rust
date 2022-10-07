@@ -69,6 +69,8 @@ const U2C_HOST_PREFIX: &str = "https://u2c.wbx2.com/u2c/api/v1";
 // Default mercury URL, used when the token doesn't have permissions to list organizations.
 const DEFAULT_REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
+const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
@@ -225,10 +227,10 @@ impl Webex {
                 device_name: Some("rust-client".to_string()),
                 device_type: Some("DESKTOP".to_string()),
                 localized_model: Some("rust".to_string()),
-                model: Some("rust".to_string()),
+                model: Some(format!("rust-v{}", CRATE_VERSION)),
                 name: Some("rust-spark-client".to_string()),
                 system_name: Some("rust-spark-client".to_string()),
-                system_version: Some("0.1".to_string()),
+                system_version: Some(CRATE_VERSION.to_string()),
                 ..DeviceData::default()
             },
         };
@@ -287,15 +289,11 @@ impl Webex {
             }
         }
 
-        let mut devices: Vec<DeviceData> = match self.get_devices().await {
-            Ok(d) => d,
-            Err(e) => {
-                warn!("Failed to get devices {}", e);
-                self.setup_devices().await?;
-                self.get_devices().await?
-            }
-        };
+        // get_devices automatically tries to set up devices if the get fails.
+        let mut devices: Vec<DeviceData> = self.get_devices().await?;
 
+        // Sort devices in descending order by modification time, meaning latest created device
+        // first.
         devices.sort_by(|a: &DeviceData, b: &DeviceData| {
             b.modification_time
                 .unwrap_or_else(chrono::Utc::now)
@@ -554,7 +552,7 @@ impl Webex {
         match self.api_get::<DevicesReply>("devices").await {
             #[rustfmt::skip]
             Ok(DevicesReply { devices: Some(devices), .. }) => Ok(devices),
-            Ok(_) => {
+            Ok(DevicesReply { devices: None, .. }) => {
                 debug!("Chaining one-time device setup from devices query");
                 self.setup_devices().await.map(|device| vec![device])
             }
