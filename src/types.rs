@@ -601,7 +601,10 @@ impl From<ActivityType> for GlobalIdType {
             ActivityType::Message(_) => Self::Message,
             ActivityType::Unknown(_) => Self::Unknown,
             a => {
-                log::error!("Failed to convert {:?} to GlobalIdType, this may cause errors later", a);
+                log::error!(
+                    "Failed to convert {:?} to GlobalIdType, this may cause errors later",
+                    a
+                );
                 Self::Unknown
             }
         }

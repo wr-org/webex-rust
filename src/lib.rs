@@ -32,6 +32,7 @@
 
 #[macro_use]
 extern crate error_chain;
+extern crate lazy_static;
 
 pub mod adaptive_card;
 #[allow(missing_docs)]
@@ -47,7 +48,11 @@ use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
 use log::{debug, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicI32, atomic::Ordering, Mutex},
+    time::Duration,
+};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as TMessage, MaybeTlsStream, WebSocketStream,
@@ -71,6 +76,11 @@ const DEFAULT_REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+static CLIENT_NUMBER: AtomicI32 = AtomicI32::new(0);
+lazy_static::lazy_static! {
+    static ref MERCURY_CACHE: Mutex<HashMap<i32, String>> = Mutex::new(HashMap::new());
+}
+
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
@@ -79,6 +89,7 @@ type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 #[derive(Clone)]
 #[must_use]
 pub struct Webex {
+    id: i32,
     client: WebClient,
     bearer: String,
     token: String,
@@ -218,7 +229,10 @@ impl Webex {
         let https = HttpsConnector::new();
         let client = Client::builder().build::<_, hyper::Body>(https);
 
+        let id = CLIENT_NUMBER.fetch_add(1, Ordering::Relaxed);
+
         let mut webex = Self {
+            id,
             client,
             token: token.to_string(),
             bearer: format!("Bearer {}", token),
@@ -321,6 +335,18 @@ impl Webex {
         // 1. Get org id by GET /v1/organizations
         // 2. Get urls json from https://u2c.wbx2.com/u2c/api/v1/limited/catalog?orgId=[org id]
         // 3. mercury url is urls["serviceLinks"]["wdm"]
+        //
+        // 4. Add caching because this doesn't change, and it can be slow
+
+        {
+            // Stop lock being held through an await point
+            let cache = MERCURY_CACHE
+                .lock()
+                .expect("Should be no panics while holding this lock");
+            if let Some(result) = cache.get(&self.id) {
+                return Ok(result.clone());
+            }
+        }
 
         let orgs = self.get_orgs().await?;
         if orgs.is_empty() {
@@ -329,8 +355,16 @@ impl Webex {
         let org_id = &orgs[0].id;
         let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
         let catalogs = self.api_get::<CatalogReply>(&api_url).await?;
+        let mercury_url = catalogs.service_links.wdm;
 
-        Ok(catalogs.service_links.wdm)
+        {
+            let mut cache = MERCURY_CACHE
+                .lock()
+                .expect("Should be no panics while holding this lock");
+            cache.insert(self.id, mercury_url.clone());
+        }
+
+        Ok(mercury_url)
     }
 
     /// Get list of organizations
