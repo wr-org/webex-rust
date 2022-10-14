@@ -77,10 +77,6 @@ const DEFAULT_REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-lazy_static::lazy_static! {
-    static ref MERCURY_CACHE: Mutex<HashMap<u64, String>> = Mutex::new(HashMap::new());
-}
-
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
@@ -264,7 +260,7 @@ impl Webex {
             }
             Err(e) => {
                 warn!("Failed to fetch devices url, falling back to default");
-                debug!("Error: {}", e);
+                debug!("Error: {:?}", e);
                 DEFAULT_REGISTRATION_HOST_PREFIX.to_string()
             }
         };
@@ -332,20 +328,38 @@ impl Webex {
         }
     }
 
-    async fn get_mercury_url(&self) -> Result<String, error::Error> {
+    async fn get_mercury_url(&self) -> Result<String, Option<error::Error>> {
+        // Bit of a hacky workaround, error::Error does not implement clone
+        lazy_static::lazy_static! {
+            static ref MERCURY_CACHE: Mutex<HashMap<u64, Result<String, ()>>> = Mutex::new(HashMap::new());
+        }
+        if let Ok(Some(result)) = MERCURY_CACHE
+            .lock()
+            .map(|cache| cache.get(&self.id).map(std::clone::Clone::clone))
+        {
+            return result.map_err(|_| None);
+        }
+
+        let mercury_url = self.get_mercury_url_uncached().await;
+
+        if let Ok(mut cache) = MERCURY_CACHE.lock() {
+            let result = match mercury_url {
+                Ok(ref url) => Ok(url.clone()),
+                Err(_) => Err(()),
+            };
+            cache.insert(self.id, result);
+        }
+
+        mercury_url.map_err(Some)
+    }
+
+    async fn get_mercury_url_uncached(&self) -> Result<String, error::Error> {
         // Steps:
         // 1. Get org id by GET /v1/organizations
         // 2. Get urls json from https://u2c.wbx2.com/u2c/api/v1/limited/catalog?orgId=[org id]
         // 3. mercury url is urls["serviceLinks"]["wdm"]
         //
         // 4. Add caching because this doesn't change, and it can be slow
-
-        if let Ok(Some(result)) = MERCURY_CACHE
-            .lock()
-            .map(|cache| cache.get(&self.id).map(String::clone))
-        {
-            return Ok(result);
-        }
 
         let orgs = self.get_orgs().await?;
         if orgs.is_empty() {
@@ -355,10 +369,6 @@ impl Webex {
         let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
         let catalogs = self.api_get::<CatalogReply>(&api_url).await?;
         let mercury_url = catalogs.service_links.wdm;
-
-        if let Ok(mut cache) = MERCURY_CACHE.lock() {
-            cache.insert(self.id, mercury_url.clone());
-        }
 
         Ok(mercury_url)
     }
