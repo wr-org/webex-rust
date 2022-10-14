@@ -49,8 +49,9 @@ use hyper_tls::HttpsConnector;
 use log::{debug, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    collections::HashMap,
-    sync::{atomic::AtomicI32, atomic::Ordering, Mutex},
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{self, Hasher},
+    sync::Mutex,
     time::Duration,
 };
 use tokio::net::TcpStream;
@@ -76,9 +77,8 @@ const DEFAULT_REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-static CLIENT_NUMBER: AtomicI32 = AtomicI32::new(0);
 lazy_static::lazy_static! {
-    static ref MERCURY_CACHE: Mutex<HashMap<i32, String>> = Mutex::new(HashMap::new());
+    static ref MERCURY_CACHE: Mutex<HashMap<u64, String>> = Mutex::new(HashMap::new());
 }
 
 /// Web Socket Stream type
@@ -89,7 +89,7 @@ type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 #[derive(Clone)]
 #[must_use]
 pub struct Webex {
-    id: i32,
+    id: u64,
     client: WebClient,
     bearer: String,
     token: String,
@@ -229,7 +229,9 @@ impl Webex {
         let https = HttpsConnector::new();
         let client = Client::builder().build::<_, hyper::Body>(https);
 
-        let id = CLIENT_NUMBER.fetch_add(1, Ordering::Relaxed);
+        let mut hasher = DefaultHasher::new();
+        hash::Hash::hash_slice(token.as_bytes(), &mut hasher);
+        let id = hasher.finish();
 
         let mut webex = Self {
             id,
@@ -338,14 +340,11 @@ impl Webex {
         //
         // 4. Add caching because this doesn't change, and it can be slow
 
+        if let Ok(Some(result)) = MERCURY_CACHE
+            .lock()
+            .map(|cache| cache.get(&self.id).map(String::clone))
         {
-            // Stop lock being held through an await point
-            let cache = MERCURY_CACHE
-                .lock()
-                .expect("Should be no panics while holding this lock");
-            if let Some(result) = cache.get(&self.id) {
-                return Ok(result.clone());
-            }
+            return Ok(result);
         }
 
         let orgs = self.get_orgs().await?;
@@ -357,10 +356,7 @@ impl Webex {
         let catalogs = self.api_get::<CatalogReply>(&api_url).await?;
         let mercury_url = catalogs.service_links.wdm;
 
-        {
-            let mut cache = MERCURY_CACHE
-                .lock()
-                .expect("Should be no panics while holding this lock");
+        if let Ok(mut cache) = MERCURY_CACHE.lock() {
             cache.insert(self.id, mercury_url.clone());
         }
 
