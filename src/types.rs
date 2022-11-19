@@ -535,6 +535,7 @@ impl Event {
                     .expect("Conversation activity should have activity set")
                     .verb
                     .as_str();
+                #[allow(clippy::option_if_let_else)]
                 if let Ok(type_) = MessageActivity::try_from(activity_type) {
                     ActivityType::Message(type_)
                 } else if let Ok(type_) = SpaceActivity::try_from(activity_type) {

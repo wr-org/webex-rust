@@ -4,6 +4,7 @@
 // TODO: remove this when clippy bug fixed in stable
 #![allow(clippy::use_self)]
 #![allow(clippy::missing_errors_doc)]
+#![allow(clippy::option_if_let_else)]
 #![cfg_attr(test, deny(warnings))]
 #![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
 
@@ -319,11 +320,7 @@ impl Webex {
         }
 
         // Failed to connect to any existing devices, creating new one
-        if let Ok(event_stream) = connect_device(self, self.setup_devices().await?).await {
-            Ok(event_stream)
-        } else {
-            Err("Failed to connect to any existing device and newly created device".into())
-        }
+        connect_device(self, self.setup_devices().await?).await
     }
 
     async fn get_mercury_url(&self) -> Result<String, Option<error::Error>> {
@@ -342,10 +339,7 @@ impl Webex {
         let mercury_url = self.get_mercury_url_uncached().await;
 
         if let Ok(mut cache) = MERCURY_CACHE.lock() {
-            let result = match mercury_url {
-                Ok(ref url) => Ok(url.clone()),
-                Err(_) => Err(()),
-            };
+            let result = mercury_url.as_ref().map_or(Err(()), |url| Ok(url.clone()));
             trace!("Saving mercury url to cache: {}=>{:?}", self.id, &result);
             cache.insert(self.id, result);
         }
