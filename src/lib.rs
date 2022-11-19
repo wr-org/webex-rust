@@ -148,16 +148,16 @@ impl WebexEventStream {
 
     fn handle_message(&mut self, msg: TMessage) -> Result<Option<Event>, Error> {
         match msg {
-            TMessage::Binary(bytes) => match std::str::from_utf8(&bytes) {
-                Ok(json) => match serde_json::from_str(json) {
+            TMessage::Binary(bytes) => {
+                let json = std::str::from_utf8(&bytes)?;
+                match serde_json::from_str(json) {
                     Ok(ev) => Ok(Some(ev)),
                     Err(e) => {
                         warn!("Couldn't deserialize: {:?}.  Original JSON:\n{}", e, &json);
                         Err(e.into())
                     }
-                },
-                Err(e) => Err(e.into()),
-            },
+                }
+            }
             TMessage::Text(t) => {
                 debug!("text: {}", t);
                 Ok(None)
@@ -259,7 +259,7 @@ impl Webex {
                 url
             }
             Err(e) => {
-                warn!("Failed to fetch devices url, falling back to default");
+                debug!("Failed to fetch devices url, falling back to default");
                 debug!("Error: {:?}", e);
                 DEFAULT_REGISTRATION_HOST_PREFIX.to_string()
             }
@@ -277,7 +277,7 @@ impl Webex {
         async fn connect_device(s: &Webex, device: DeviceData) -> Result<WebexEventStream, Error> {
             let ws_url = match device.ws_url {
                 Some(url) => url,
-                None => return Err(Error::from("Device has no ws_url")),
+                None => return Err("Device has no ws_url".into()),
             };
             let url = url::Url::parse(ws_url.as_str())
                 .map_err(|_| Error::from("Failed to parse ws_url"))?;
@@ -322,9 +322,7 @@ impl Webex {
         if let Ok(event_stream) = connect_device(self, self.setup_devices().await?).await {
             Ok(event_stream)
         } else {
-            Err(Error::from(
-                "Failed to connect to any existing device and newly created device",
-            ))
+            Err("Failed to connect to any existing device and newly created device".into())
         }
     }
 
@@ -335,8 +333,9 @@ impl Webex {
         }
         if let Ok(Some(result)) = MERCURY_CACHE
             .lock()
-            .map(|cache| cache.get(&self.id).map(std::clone::Clone::clone))
+            .map(|cache| cache.get(&self.id).map(Clone::clone))
         {
+            trace!("Found mercury URL in cache!");
             return result.map_err(|_| None);
         }
 
@@ -347,6 +346,7 @@ impl Webex {
                 Ok(ref url) => Ok(url.clone()),
                 Err(_) => Err(()),
             };
+            trace!("Saving mercury url to cache: {}=>{:?}", self.id, &result);
             cache.insert(self.id, result);
         }
 
@@ -361,9 +361,9 @@ impl Webex {
         //
         // 4. Add caching because this doesn't change, and it can be slow
 
-        let orgs = self.get_orgs().await?;
+        let orgs = self.list::<Organization>().await?;
         if orgs.is_empty() {
-            return Err(error::Error::from("Can't get mercury URL with no orgs"));
+            return Err("Can't get mercury URL with no orgs".into());
         }
         let org_id = &orgs[0].id;
         let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
@@ -377,9 +377,12 @@ impl Webex {
     ///
     /// # Errors
     /// See [`Webex::get_message()`] errors.
+    #[deprecated(
+        since = "1.0.0",
+        note = "Please use webex::list::<Organization>() instead"
+    )]
     pub async fn get_orgs(&self) -> Result<Vec<Organization>, Error> {
-        let orgs: OrganizationReply = self.api_get("organizations").await?;
-        Ok(orgs.items)
+        self.list().await
     }
     /// Get attachment action
     ///
@@ -392,12 +395,12 @@ impl Webex {
     ///
     /// # Errors
     /// See [`Webex::get_message()`] errors.
+    #[deprecated(
+        since = "1.0.0",
+        note = "Please use webex::get::<AttachmentAction>(id) instead"
+    )]
     pub async fn get_attachment_action(&self, id: &GlobalId) -> Result<AttachmentAction, Error> {
-        let rest_method = format!(
-            "attachment/actions/{}",
-            id.id(GlobalIdType::AttachmentAction)?
-        );
-        self.api_get(rest_method.as_str()).await
+        self.get(id).await
     }
 
     /// Get a message by ID
@@ -417,51 +420,36 @@ impl Webex {
     /// value cannot be deserialised. (If this happens, this is a library bug and should be
     /// reported.)
     /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
-    /// * (New) [`ErrorKind::IncorrectId`] - this function has been passed a ``GlobalId`` that does not
-    /// correspond to a message. This error will only occur in debug builds
-    /// (`#[cfg(debug_assertions)]` enabled) for performance reasons, and because an incorrect ID
-    /// will not cause crashes - this is purely to ease debugging if something goes wrong
+    #[deprecated(since = "1.0.0", note = "Please use webex::get::<Message>(id) instead")]
     pub async fn get_message(&self, id: &GlobalId) -> Result<Message, Error> {
-        let rest_method = format!("messages/{}", id.id(GlobalIdType::Message)?);
-        self.api_get(rest_method.as_str()).await
+        self.get(id).await
     }
 
     /// Delete a message by ID
     pub async fn delete_message(&self, id: &GlobalId) -> Result<(), Error> {
-        let rest_method = format!("messages/{}", id.id(GlobalIdType::Message)?);
+        let rest_method = format!("messages/{}", id.id());
         self.api_delete(rest_method.as_str()).await
     }
 
     /// Get available rooms
+    #[deprecated(since = "1.0.0", note = "Please use webex::list::<Room>() instead")]
     pub async fn get_rooms(&self) -> Result<Vec<Room>, Error> {
-        let rooms_reply: Result<RoomsReply, _> = self.api_get("rooms").await;
-        match rooms_reply {
-            Err(e) => Err(Error::with_chain(e, "rooms failed: ")),
-            Ok(rr) => Ok(rr.items),
-        }
+        self.list().await
     }
 
     /// Get available room
+    #[deprecated(since = "1.0.0", note = "Please use webex::get::<Room>(id) instead")]
     pub async fn get_room(&self, id: &GlobalId) -> Result<Room, Error> {
-        let rest_method = format!("rooms/{}", id.id(GlobalIdType::Room)?);
-        let room_reply: Result<Room, _> = self.api_get(rest_method.as_str()).await;
-        match room_reply {
-            Err(e) => Err(Error::with_chain(e, "room failed: ")),
-            Ok(rr) => Ok(rr),
-        }
+        self.get(id).await
     }
 
     /// Get information about person
     ///
     /// # Errors
     /// See `get_message`
+    #[deprecated(since = "1.0.0", note = "Please use webex::get::<Person>(id) instead")]
     pub async fn get_person(&self, id: &GlobalId) -> Result<Person, Error> {
-        let rest_method = format!("people/{}", id.id(GlobalIdType::Person)?);
-        let people_reply: Result<Person, _> = self.api_get(rest_method.as_str()).await;
-        match people_reply {
-            Err(e) => Err(Error::with_chain(e, "people failed: ")),
-            Ok(pr) => Ok(pr),
-        }
+        self.get(id).await
     }
 
     /// Send a message to a user or room
@@ -480,6 +468,19 @@ impl Webex {
     /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn send_message(&self, message: &MessageOut) -> Result<Message, Error> {
         self.api_post("messages", &message).await
+    }
+
+    /// Get a resource from an ID
+    pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
+        let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
+        self.api_get::<T>(rest_method.as_str()).await
+    }
+
+    /// List resources of a type
+    pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
+        self.api_get::<ListResult<T>>(T::API_ENDPOINT)
+            .await
+            .map(|result| result.items)
     }
 
     /******************************************************************
@@ -511,20 +512,14 @@ impl Webex {
         rest_method: &str,
         body: Option<U>,
     ) -> Result<T, Error> {
-        match self.call_web_api_raw(http_method, rest_method, body).await {
-            Ok(reply) => {
-                let de: Result<T, _> = serde_json::from_str(reply.as_str());
-                match de {
-                    Ok(reply) => Ok(reply),
-                    Err(e) => {
-                        debug!("Couldn't parse reply for {} call: {}", rest_method, e);
-                        debug!("Source JSON: {}", reply);
-                        Err(Error::with_chain(e, "failed to parse reply"))
-                    }
-                }
-            }
-            Err(e) => Err(e),
-        }
+        let reply = self
+            .call_web_api_raw(http_method, rest_method, body)
+            .await?;
+        serde_json::from_str(reply.as_str()).map_err(|e| {
+            debug!("Couldn't parse reply for {} call: {}", rest_method, e);
+            debug!("Source JSON: {}", reply);
+            Error::with_chain(e, "failed to parse reply")
+        })
     }
 
     async fn call_web_api_raw<T: Serialize + Send>(

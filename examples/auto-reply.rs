@@ -30,17 +30,14 @@ async fn main() {
     let bot_email = env::var(BOT_EMAIL)
         .unwrap_or_else(|_| panic!("{} not specified in environment", BOT_EMAIL));
 
-    let webex = webex::Webex::new(token.as_str());
+    let webex = webex::Webex::new(token.as_str()).await;
     let mut event_stream = webex.event_stream().await.expect("event stream");
 
     while let Ok(event) = event_stream.next().await {
         // Dig out the useful bit
         if event.activity_type() == webex::ActivityType::Message(webex::MessageActivity::Posted) {
             // The event stream doesn't contain the message -- you have to go fetch it
-            if let Ok(msg) = webex
-                .get_message(&event.get_global_id().expect("Get event global id"))
-                .await
-            {
+            if let Ok(msg) = webex.get::<webex::Message>(&event.get_global_id()).await {
                 match &msg.person_email {
                     // Reply as long as it doesn't appear to be our own message
                     // In practice, this shouldn't happen since bots can't see messages

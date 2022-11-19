@@ -1,11 +1,43 @@
 #![deny(missing_docs)]
 //! Basic types for Webex Teams APIs
 
-use crate::{adaptive_card::AdaptiveCard, error, error::ErrorKind};
+use crate::{adaptive_card::AdaptiveCard, error, error::ResultExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use uuid::Uuid;
+
+/// Trait for API types. Has to be public due to trait bounds limitations on webex API, but
+/// not recommended to implement yourself.
+pub trait Gettable {
+    /// Endpoint to query to perform an HTTP GET request with an id
+    const API_ENDPOINT: &'static str;
+}
+
+impl Gettable for Message {
+    const API_ENDPOINT: &'static str = "messages";
+}
+
+impl Gettable for Organization {
+    const API_ENDPOINT: &'static str = "organizations";
+}
+
+impl Gettable for AttachmentAction {
+    const API_ENDPOINT: &'static str = "attachment/actions";
+}
+
+impl Gettable for Room {
+    const API_ENDPOINT: &'static str = "rooms";
+}
+
+impl Gettable for Person {
+    const API_ENDPOINT: &'static str = "people";
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ListResult<T> {
+    pub items: Vec<T>,
+}
 
 /// Webex Teams room information
 #[derive(Deserialize, Serialize, Debug)]
@@ -34,12 +66,6 @@ pub struct Room {
     pub created: String,
 }
 
-#[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug)]
-pub(crate) struct RoomsReply {
-    pub items: Vec<Room>,
-}
-
 /// Holds details about the organization an account belongs to.
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -50,11 +76,6 @@ pub struct Organization {
     pub display_name: String,
     /// Date and time the org was created
     pub created: String,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub(crate) struct OrganizationReply {
-    pub items: Vec<Organization>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -175,11 +196,6 @@ pub struct Message {
     /// The date and time the message was updated, if it was edited.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub(crate) struct MessagesReply {
-    pub items: Vec<Message>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -549,7 +565,7 @@ impl Event {
     /// `event.data.activity.target` is not `None` then this function should always produce the correct ID, if
     /// `target` is `None` then this will guess the location is `us` (which is currently true for
     /// all IDs).
-    pub fn get_global_id(&self) -> Result<GlobalId, error::Error> {
+    pub fn get_global_id(&self) -> GlobalId {
         // Safety: ID should be fine since it's from the API (guaranteed to be UUID or b64 URI).
         let self_activity = self.data.activity.as_ref();
         GlobalId::new_with_cluster_unchecked(
@@ -630,6 +646,7 @@ impl std::fmt::Display for GlobalIdType {
 /// It is created from a certain resource type to make it impossible to use a person ID to fetch a
 /// message, or vice versa.
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct GlobalId {
     id: String,
     type_: GlobalIdType,
@@ -659,47 +676,22 @@ impl GlobalId {
     ///   * the ID is a base64 geo-ID and the type does not match the given type.
     ///   * the ID is a base64 geo-ID and the cluster does not match the given cluster.
     ///   * the ID is neither a UUID or a base64 geo-id.
-    ///
-    /// # Examples
-    /// Basic behaviour: default cluster, type-checking ID
-    /// ```
-    /// use webex::{GlobalId, GlobalIdType};
-    /// // Create a new GlobalId
-    /// // Note: you should never need to do this in your code.
-    /// // Is making all this public a code smell?
-    /// let id = GlobalId::new(
-    ///     GlobalIdType::Message,
-    ///     "0fad2000-f9f5-11eb-9eee-79a3ef978a3d".to_string())?;
-    /// // Show off type-checked IDs - ensure that the ID passed into a function is the one
-    /// // expected.
-    /// assert_eq!(id.id(GlobalIdType::Message)?,
-    ///     base64::encode("ciscospark://us/MESSAGE/0fad2000-f9f5-11eb-9eee-79a3ef978a3d"));
-    /// // If the ID passed in is for a different resource, produce an error.
-    /// assert!(id.id(GlobalIdType::Person).is_err());
-    /// # Ok::<(), webex::error::Error>(())
-    /// ```
     pub fn new_with_cluster(
         type_: GlobalIdType,
         id: String,
         cluster: Option<&str>,
     ) -> Result<Self, error::Error> {
         if type_ == GlobalIdType::Unknown {
-            return Err(
-                ErrorKind::Msg("Cannot get globalId for unknown ID type".to_string()).into(),
-            );
+            return Err("Cannot get globalId for unknown ID type".into());
         }
         if let Ok(decoded_id) = base64::decode(&id) {
-            let decoded_id = std::str::from_utf8(&decoded_id).map_err(|e| {
-                error::Error::from(ErrorKind::UTF8(e))
-                    .chain_err(|| "Failed to turn base64 id into UTF8 string")
-            })?;
+            let decoded_id = std::str::from_utf8(&decoded_id)
+                .chain_err(|| "Failed to turn base64 id into UTF8 string")?;
             Self::check_id(decoded_id, cluster, &type_.to_string())?;
         } else if Uuid::parse_str(&id).is_err() {
-            return Err(
-                ErrorKind::Msg("Expected ID to be base64 geo-id or uuid".to_string()).into(),
-            );
+            return Err("Expected ID to be base64 geo-id or uuid".into());
         }
-        Self::new_with_cluster_unchecked(type_, id, cluster)
+        Ok(Self::new_with_cluster_unchecked(type_, id, cluster))
     }
 
     /// Given an ID and a possible cluster, generate a new geo-ID.
@@ -709,7 +701,7 @@ impl GlobalId {
         type_: GlobalIdType,
         id: String,
         cluster: Option<&str>,
-    ) -> Result<Self, error::Error> {
+    ) -> Self {
         let id = if Uuid::parse_str(&id).is_ok() {
             base64::encode(format!(
                 "ciscospark://{}/{}/{}",
@@ -720,7 +712,7 @@ impl GlobalId {
         } else {
             id
         };
-        Ok(Self { id, type_ })
+        Self { id, type_ }
     }
     fn check_id(id: &str, cluster: Option<&str>, type_: &str) -> Result<(), error::Error> {
         let decoded_parts: Vec<&str> = id.split('/').collect();
@@ -728,33 +720,41 @@ impl GlobalId {
             || decoded_parts[0] != "ciscospark:"
             || !decoded_parts[1].is_empty()
         {
-            return Err(error::Error::from(
-                "Expected base64 ID to be in the form ciscospark://[cluster]/[type]/[id]",
-            ));
+            return Err(
+                "Expected base64 ID to be in the form ciscospark://[cluster]/[type]/[id]".into(),
+            );
         } else if let Some(expected_cluster) = cluster {
             if decoded_parts[2] != expected_cluster {
                 // TODO - this won't happen when we fetch the cluster ourselves, since we get it from
                 // the ID. Can we/should we skip this check somehow?
 
-                return Err(ErrorKind::Msg(format!(
+                return Err(format!(
                     "Expected base64 cluster to equal expected cluster {expected_cluster}"
-                ))
+                )
                 .into());
             }
         } else if decoded_parts[3] != type_ {
-            return Err(ErrorKind::Msg(format!("Expected base64 type to equal {type_}")).into());
+            return Err(format!("Expected base64 type to equal {type_}").into());
         }
         Ok(())
     }
     /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
-    /// Takes an expected type to ensure that the ID is for the correct type of object, but only
-    /// performs that checking on debug builds as an incorrect ID type is not a hard error.
     #[inline]
-    pub fn id(&self, expected: GlobalIdType) -> Result<&str, error::Error> {
-        if !cfg!(debug_assertions) || self.type_ == expected {
-            Ok(&self.id)
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Check if type is the same as expected type
+    pub fn check_type(&self, expected_type: GlobalIdType) -> Result<(), error::Error> {
+        if expected_type == self.type_ {
+            Ok(())
         } else {
-            Err(ErrorKind::IncorrectId(expected, self.type_).into())
+            Err(format!(
+                "GlobalId type {} does not match expected type {}",
+                self.type_, expected_type
+            )
+            .into())
         }
     }
 }

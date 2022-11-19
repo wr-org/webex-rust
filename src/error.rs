@@ -1,4 +1,3 @@
-use crate::types::GlobalIdType;
 use hyper::{Error as HyperError, StatusCode};
 use serde_json::error::Error as SerdeError;
 
@@ -35,9 +34,9 @@ error_chain! {
             display("{} {}", e, t)
         }
 
-        IncorrectId(expected: GlobalIdType, actual: GlobalIdType) {
-            description("Incorrect ID type")
-            display("Expected ID type {}, got {}", expected, actual)
+        Api(s: &'static str) {
+            description("The Webex API has changed, breaking the library's assumptions. This should be resolved in the next library update.")
+            display("API changed: {}", s)
         }
     }
 }
