@@ -7,31 +7,41 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use uuid::Uuid;
 
-/// Trait for API types. Has to be public due to trait bounds limitations on webex API, but
-/// not recommended to implement yourself.
-pub trait Gettable {
-    /// Endpoint to query to perform an HTTP GET request with an id
-    const API_ENDPOINT: &'static str;
-}
+pub(crate) use api::Gettable;
 
-impl Gettable for Message {
-    const API_ENDPOINT: &'static str = "messages";
-}
+mod api {
+    //! Private crate to hold all types that the user shouldn't have to interact with.
+    use super::{AttachmentAction, Message, Organization, Person, Room, Team};
+    /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but
+    /// not recommended to implement yourself.
+    pub trait Gettable {
+        /// Endpoint to query to perform an HTTP GET request with an id
+        const API_ENDPOINT: &'static str;
+    }
 
-impl Gettable for Organization {
-    const API_ENDPOINT: &'static str = "organizations";
-}
+    impl Gettable for Message {
+        const API_ENDPOINT: &'static str = "messages";
+    }
 
-impl Gettable for AttachmentAction {
-    const API_ENDPOINT: &'static str = "attachment/actions";
-}
+    impl Gettable for Organization {
+        const API_ENDPOINT: &'static str = "organizations";
+    }
 
-impl Gettable for Room {
-    const API_ENDPOINT: &'static str = "rooms";
-}
+    impl Gettable for AttachmentAction {
+        const API_ENDPOINT: &'static str = "attachment/actions";
+    }
 
-impl Gettable for Person {
-    const API_ENDPOINT: &'static str = "people";
+    impl Gettable for Room {
+        const API_ENDPOINT: &'static str = "rooms";
+    }
+
+    impl Gettable for Person {
+        const API_ENDPOINT: &'static str = "people";
+    }
+
+    impl Gettable for Team {
+        const API_ENDPOINT: &'static str = "teams";
+    }
 }
 
 #[derive(Deserialize)]
@@ -76,6 +86,20 @@ pub struct Organization {
     pub display_name: String,
     /// Date and time the org was created
     pub created: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+/// Holds details about a team that includes the account.
+pub struct Team {
+    /// Id of the team
+    pub id: String,
+    /// Name of the team
+    pub name: String,
+    /// Date and time the team was created
+    pub created: String,
+    /// Team description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

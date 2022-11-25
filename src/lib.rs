@@ -139,7 +139,13 @@ impl WebexEventStream {
                             self.is_open = false;
                             return Err(e.to_string().into());
                         }
-                        Err(e) => return Err(e.to_string().into()),
+                        Err(e) => {
+                            return Err(ErrorKind::Tungstenite(
+                                e,
+                                "Error getting next_result".into(),
+                            )
+                            .into())
+                        }
                     },
                     None => continue,
                 },
@@ -372,8 +378,8 @@ impl Webex {
     /// # Errors
     /// See [`Webex::get_message()`] errors.
     #[deprecated(
-        since = "1.0.0",
-        note = "Please use webex::list::<Organization>() instead"
+        since = "0.9.0",
+        note = "Please use `webex::list::<Organization>()` instead"
     )]
     pub async fn get_orgs(&self) -> Result<Vec<Organization>, Error> {
         self.list().await
@@ -390,8 +396,8 @@ impl Webex {
     /// # Errors
     /// See [`Webex::get_message()`] errors.
     #[deprecated(
-        since = "1.0.0",
-        note = "Please use webex::get::<AttachmentAction>(id) instead"
+        since = "0.9.0",
+        note = "Please use `webex::get::<AttachmentAction>(id)` instead"
     )]
     pub async fn get_attachment_action(&self, id: &GlobalId) -> Result<AttachmentAction, Error> {
         self.get(id).await
@@ -414,7 +420,10 @@ impl Webex {
     /// value cannot be deserialised. (If this happens, this is a library bug and should be
     /// reported.)
     /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
-    #[deprecated(since = "1.0.0", note = "Please use webex::get::<Message>(id) instead")]
+    #[deprecated(
+        since = "0.9.0",
+        note = "Please use `webex::get::<Message>(id)` instead"
+    )]
     pub async fn get_message(&self, id: &GlobalId) -> Result<Message, Error> {
         self.get(id).await
     }
@@ -426,13 +435,33 @@ impl Webex {
     }
 
     /// Get available rooms
-    #[deprecated(since = "1.0.0", note = "Please use webex::list::<Room>() instead")]
+    #[deprecated(since = "0.9.0", note = "Please use `webex::list::<Room>()` instead")]
     pub async fn get_rooms(&self) -> Result<Vec<Room>, Error> {
         self.list().await
     }
 
+    /// Get all rooms from all organizations that the client belongs to.
+    /// Will be slow as does multiple API calls (one to get teamless rooms, one to get teams, then
+    /// one per team).
+    pub async fn get_all_rooms(&self) -> Result<Vec<Room>, Error> {
+        let mut all_rooms = self.list().await?;
+        let teams = self.list::<Team>().await?;
+        for team in &teams {
+            all_rooms.extend(
+                self.api_get::<ListResult<Room>>(&format!(
+                    "{}/?teamId={}",
+                    Room::API_ENDPOINT,
+                    team.id
+                ))
+                .await?
+                .items,
+            );
+        }
+        Ok(all_rooms)
+    }
+
     /// Get available room
-    #[deprecated(since = "1.0.0", note = "Please use webex::get::<Room>(id) instead")]
+    #[deprecated(since = "0.9.0", note = "Please use `webex::get::<Room>(id)` instead")]
     pub async fn get_room(&self, id: &GlobalId) -> Result<Room, Error> {
         self.get(id).await
     }
@@ -441,7 +470,10 @@ impl Webex {
     ///
     /// # Errors
     /// See `get_message`
-    #[deprecated(since = "1.0.0", note = "Please use webex::get::<Person>(id) instead")]
+    #[deprecated(
+        since = "0.9.0",
+        note = "Please use `webex::get::<Person>(id)` instead"
+    )]
     pub async fn get_person(&self, id: &GlobalId) -> Result<Person, Error> {
         self.get(id).await
     }
