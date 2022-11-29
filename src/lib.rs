@@ -331,6 +331,7 @@ impl Webex {
 
     async fn get_mercury_url(&self) -> Result<String, Option<error::Error>> {
         // Bit of a hacky workaround, error::Error does not implement clone
+        // TODO: this can be fixed by returning a Result<String, &error::Error>
         lazy_static::lazy_static! {
             static ref MERCURY_CACHE: Mutex<HashMap<u64, Result<String, ()>>> = Mutex::new(HashMap::new());
         }
@@ -374,9 +375,6 @@ impl Webex {
     }
 
     /// Get list of organizations
-    ///
-    /// # Errors
-    /// See [`Webex::get_message()`] errors.
     #[deprecated(
         since = "0.9.0",
         note = "Please use `webex::list::<Organization>()` instead"
@@ -385,16 +383,8 @@ impl Webex {
         self.list().await
     }
     /// Get attachment action
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - attachment ID, a [`GlobalId`].
-    ///
     /// Retrieves the attachment for the given ID.  This can be used to
     /// retrieve data from an `AdaptiveCard` submission
-    ///
-    /// # Errors
-    /// See [`Webex::get_message()`] errors.
     #[deprecated(
         since = "0.9.0",
         note = "Please use `webex::get::<AttachmentAction>(id)` instead"
@@ -404,22 +394,6 @@ impl Webex {
     }
 
     /// Get a message by ID
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - message ID, a [`GlobalId`]
-    ///
-    /// If you have a UUID, please use [`GlobalId::new()`].
-    /// If you have an `Event`, use [`Event::get_global_id()`].
-    ///
-    /// # Errors
-    /// Same as [`Webex::send_message()`] errors, plus an additional one below.
-    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
-    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
-    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
-    /// value cannot be deserialised. (If this happens, this is a library bug and should be
-    /// reported.)
-    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
     #[deprecated(
         since = "0.9.0",
         note = "Please use `webex::get::<Message>(id)` instead"
@@ -467,9 +441,6 @@ impl Webex {
     }
 
     /// Get information about person
-    ///
-    /// # Errors
-    /// See `get_message`
     #[deprecated(
         since = "0.9.0",
         note = "Please use `webex::get::<Person>(id)` instead"
@@ -497,9 +468,24 @@ impl Webex {
     }
 
     /// Get a resource from an ID
+    /// # Errors
+    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// value cannot be deserialised. (If this happens, this is a library bug and should be
+    /// reported.)
+    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
-        self.api_get::<T>(rest_method.as_str()).await
+        self.api_get::<T>(rest_method.as_str()).await.map_err(|e| {
+            e.chain_err(|| {
+                format!(
+                    "Failed to get {} with id {:?}",
+                    std::any::type_name::<T>(),
+                    id
+                )
+            })
+        })
     }
 
     /// List resources of a type
@@ -507,6 +493,7 @@ impl Webex {
         self.api_get::<ListResult<T>>(T::API_ENDPOINT)
             .await
             .map(|result| result.items)
+            .map_err(|e| e.chain_err(|| format!("Failed to list {}", std::any::type_name::<T>())))
     }
 
     /******************************************************************

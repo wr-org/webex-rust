@@ -401,7 +401,7 @@ pub(crate) struct AuthToken {
 pub struct Actor {
     pub id: String,
     pub object_type: String,
-    pub display_name: String,
+    pub display_name: Option<String>,
     pub org_id: Option<String>,
     pub email_address: Option<String>,
     #[serde(rename = "entryUUID")]
@@ -488,7 +488,8 @@ pub enum MessageActivity {
 pub enum SpaceActivity {
     /// A new space was created with the bot
     Created,
-    /// Bot was added to a space
+    /// Bot was added to a space... or a reaction was added to a message?
+    /// TODO: figure out a way to tell these events apart
     Joined,
     /// Bot left (was kicked out of) a space
     Left,
