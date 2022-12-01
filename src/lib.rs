@@ -44,6 +44,7 @@ pub use types::*;
 use error::{Error, ErrorKind, ResultExt};
 
 use crate::adaptive_card::AdaptiveCard;
+use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
@@ -418,18 +419,18 @@ impl Webex {
     /// Will be slow as does multiple API calls (one to get teamless rooms, one to get teams, then
     /// one per team).
     pub async fn get_all_rooms(&self) -> Result<Vec<Room>, Error> {
-        let mut all_rooms = self.list().await?;
-        let teams = self.list::<Team>().await?;
-        for team in &teams {
-            all_rooms.extend(
-                self.api_get::<ListResult<Room>>(&format!(
-                    "{}/?teamId={}",
-                    Room::API_ENDPOINT,
-                    team.id
-                ))
-                .await?
-                .items,
-            );
+        let (mut all_rooms, teams) = try_join!(self.list(), self.list::<Team>())?;
+        let team_endpoints: Vec<_> = teams
+            .into_iter()
+            .map(|team| format!("{}/?teamId={}", Room::API_ENDPOINT, team.id))
+            .collect();
+        let futures: Vec<_> = team_endpoints
+            .iter()
+            .map(|endpoint| self.api_get::<ListResult<Room>>(&endpoint))
+            .collect();
+        let teams_rooms = try_join_all(futures).await?;
+        for room in teams_rooms.into_iter() {
+            all_rooms.extend(room.items);
         }
         Ok(all_rooms)
     }
