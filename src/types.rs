@@ -12,8 +12,8 @@ pub(crate) use api::Gettable;
 mod api {
     //! Private crate to hold all types that the user shouldn't have to interact with.
     use super::{AttachmentAction, Message, Organization, Person, Room, Team};
-    /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but
-    /// not recommended to implement yourself.
+    /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
+    /// in a private crate so users don't see it.
     pub trait Gettable {
         /// Endpoint to query to perform an HTTP GET request with an id
         const API_ENDPOINT: &'static str;
@@ -467,7 +467,6 @@ pub enum ActivityType {
     /// `conversation.activity` type (belonging in Message or Space), the string will be
     /// `"conversation.activity.{event.data.activity.verb}"`, for example it would be
     /// `"conversation.activity.post"` for `Message(MessageActivity::Posted)`
-    ///
     Unknown(String),
 }
 /// Specifics of what type of activity [`ActivityType::Message`] represents.

@@ -41,7 +41,7 @@ pub mod error;
 pub mod types;
 pub use types::*;
 
-use error::{Error, ErrorKind};
+use error::{Error, ErrorKind, ResultExt};
 
 use crate::adaptive_card::AdaptiveCard;
 use futures_util::{SinkExt, StreamExt};
@@ -477,14 +477,12 @@ impl Webex {
     /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
-        self.api_get::<T>(rest_method.as_str()).await.map_err(|e| {
-            e.chain_err(|| {
-                format!(
-                    "Failed to get {} with id {:?}",
-                    std::any::type_name::<T>(),
-                    id
-                )
-            })
+        self.api_get::<T>(rest_method.as_str()).await.chain_err(|| {
+            format!(
+                "Failed to get {} with id {:?}",
+                std::any::type_name::<T>(),
+                id
+            )
         })
     }
 
@@ -493,7 +491,7 @@ impl Webex {
         self.api_get::<ListResult<T>>(T::API_ENDPOINT)
             .await
             .map(|result| result.items)
-            .map_err(|e| e.chain_err(|| format!("Failed to list {}", std::any::type_name::<T>())))
+            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
     }
 
     /******************************************************************
