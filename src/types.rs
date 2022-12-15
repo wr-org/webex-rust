@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use uuid::Uuid;
 
-pub(crate) use api::Gettable;
+pub(crate) use api::{Gettable, ListResult};
 
 mod api {
     //! Private crate to hold all types that the user shouldn't have to interact with.
@@ -42,11 +42,11 @@ mod api {
     impl Gettable for Team {
         const API_ENDPOINT: &'static str = "teams";
     }
-}
 
-#[derive(Deserialize)]
-pub(crate) struct ListResult<T> {
-    pub items: Vec<T>,
+    #[derive(crate::types::Deserialize)]
+    pub struct ListResult<T> {
+        pub items: Vec<T>,
+    }
 }
 
 /// Webex Teams room information
