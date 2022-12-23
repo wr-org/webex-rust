@@ -12,10 +12,12 @@ pub(crate) use api::{Gettable, ListResult};
 mod api {
     //! Private crate to hold all types that the user shouldn't have to interact with.
     use super::{AttachmentAction, Message, Organization, Person, Room, Team};
+
     /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
     /// in a private crate so users don't see it.
     pub trait Gettable {
-        /// Endpoint to query to perform an HTTP GET request with an id
+        /// Endpoint to query to perform an HTTP GET request with an id (to get an instance), or
+        /// without an id (to list them).
         const API_ENDPOINT: &'static str;
     }
 
@@ -586,37 +588,24 @@ impl Event {
     /// A function to extract a global ID from an activity.
     /// `event.data.activity.id` is a UUID, which can no longer be used for API requests, meaning any attempt
     /// at using this as an ID in a `Webex::get_*` will fail.
-    /// Users should use this function to get a [`GlobalId`], which works with the updated API. If
-    /// `event.data.activity.target` is not `None` then this function should always produce the correct ID, if
-    /// `target` is `None` then this will guess the location is `us` (which is currently true for
-    /// all IDs).
+    /// Users should use this function to get a [`GlobalId`], which works with the updated API.
     pub fn get_global_id(&self) -> GlobalId {
         // Safety: ID should be fine since it's from the API (guaranteed to be UUID or b64 URI).
+        //
+        // NOTE: Currently uses None as default cluster
+        // this means any UUID ID will default to cluster "us"
+        // When we start supporting other clusters, if the API is still returning UUID URIs, we
+        // need to investigate how to get the proper cluster. However, for now, the default is
+        // always fine.
+        // Note, we do not want to parse b64 URI into cluster, since cluster information is already
+        // part of the URI and we don't need any additional information (the "cluster" argument is
+        // ignored).
         let self_activity = self.data.activity.as_ref();
         GlobalId::new_with_cluster_unchecked(
             self.activity_type().into(),
             self_activity.map_or_else(|| self.id.clone(), |a| a.id.clone()),
-            self_activity
-                .and_then(|a| a.target.as_ref())
-                .and_then(Target::get_cluster)
-                .as_deref(),
+            None,
         )
-    }
-}
-
-impl Target {
-    /// Turns a `Target` into a cluster - used for message geodata
-    /// Assumes following API contracts:
-    /// - `target.global_id` should be a valid base64 string.
-    /// - `base64::decode(target.global_id)` should be a valid UTF-8 string, and in the form
-    /// `"ciscospark://[cluster]/[type]/[id]"`.
-    /// Will return `None` if any of those are broken.
-    pub(crate) fn get_cluster(&self) -> Option<String> {
-        String::from_utf8(base64::decode(&self.global_id).ok()?)
-            .ok()?
-            .split('/')
-            .nth(2)
-            .map(std::string::ToString::to_string)
     }
 }
 
