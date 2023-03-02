@@ -1,4 +1,5 @@
 use std::env;
+use webex::types::MessageId;
 
 const BOT_ACCESS_TOKEN: &str = "BOT_ACCESS_TOKEN";
 const BOT_EMAIL: &str = "BOT_EMAIL";
@@ -39,7 +40,10 @@ async fn main() {
             if let Some(activity) = &event.data.activity {
                 if activity.verb.as_str() == "post" {
                     // The event stream doesn't contain the message -- you have to go fetch it
-                    if let Ok(msg) = webex.get_message(activity.id.as_str()).await {
+                    if let Ok(msg) = webex
+                        .get_message(&MessageId::from(activity.id.clone()))
+                        .await
+                    {
                         match &msg.person_email {
                             // Reply as long as it doesn't appear to be our own message
                             // In practice, this shouldn't happen since bots can't see messages
