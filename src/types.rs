@@ -351,7 +351,10 @@ pub struct Activity {
 impl Activity {
     #[must_use]
     pub fn get_message_id(&self) -> MessageId {
-        MessageId::new_with_cluster(self.id.clone(), self.target.as_ref().map(Target::get_cluster))
+        MessageId::new_with_cluster(
+            self.id.clone(),
+            self.target.as_ref().map(Target::get_cluster),
+        )
     }
 }
 
@@ -382,7 +385,14 @@ impl MessageId {
             Ok(_) => base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
             Err(_) => id,
         };
-        debug_assert!(String::from_utf8(base64::decode(&id).unwrap()).unwrap().split('/').nth(3).unwrap() == "MESSAGE");
+        debug_assert!(
+            String::from_utf8(base64::decode(&id).unwrap())
+                .unwrap()
+                .split('/')
+                .nth(3)
+                .unwrap()
+                == "MESSAGE"
+        );
         Self { id }
     }
     #[must_use]
@@ -498,7 +508,7 @@ pub struct AttachmentAction {
     pub message_id: Option<String>,
     /// The action's inputs.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub inputs: Option<HashMap<String, String>>,
+    pub inputs: Option<HashMap<String, serde_json::Value>>,
     /// The ID of the person who performed the action.
     #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
