@@ -65,6 +65,9 @@ impl AdaptiveCard {
     ///
     /// * `card` - `CardElement` to add
     pub fn add_body<T: Into<CardElement>>(&mut self, card: T) -> Self {
+        //self.body = self.body.map_or_else(|| Some(vec![card.into()]), |body| body.push(card.into()));
+        //self.body = Some(self.body.unwrap_or_default().push(card.into()));
+        // TODO: improve this - can we use take()?
         self.body = Some(match self.body.clone() {
             None => {
                 vec![card.into()]
