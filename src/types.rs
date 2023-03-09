@@ -222,6 +222,9 @@ pub struct Message {
     /// The date and time the message was updated, if it was edited.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
+    /// The ID of the "parent" message (the start of the reply chain)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -453,6 +456,8 @@ pub enum ActivityType {
     Message(MessageActivity),
     /// The space the bot is in has changed - see [`SpaceActivity`] for details.
     Space(SpaceActivity),
+    /// The user has submitted an [`AdaptiveCard`].
+    AdaptiveCardSubmit,
     /// Meeting event.
     /// TODO: This needs to be broken down like `Message` and `Space`, if anyone cares.
     Locus,
@@ -562,16 +567,29 @@ impl Event {
                     .verb
                     .as_str();
                 #[allow(clippy::option_if_let_else)]
-                if let Ok(type_) = MessageActivity::try_from(activity_type) {
-                    ActivityType::Message(type_)
-                } else if let Ok(type_) = SpaceActivity::try_from(activity_type) {
-                    ActivityType::Space(type_)
-                } else {
-                    log::error!(
-                        "Unknown activity type `{}`, returning Unknown",
-                        activity_type
-                    );
-                    ActivityType::Unknown(format!("conversation.activity.{}", activity_type))
+                match activity_type {
+                    // TODO: This probably has more options
+                    // check self.data.activity.object.object_type == "submit"
+                    "cardAction" => ActivityType::AdaptiveCardSubmit,
+                    _ => {
+                        // TODO: move these into their own `match` branches when we have
+                        // match-if-let
+                        // Tracking issue: https://github.com/rust-lang/rust/issues/51114
+                        if let Ok(type_) = MessageActivity::try_from(activity_type) {
+                            ActivityType::Message(type_)
+                        } else if let Ok(type_) = SpaceActivity::try_from(activity_type) {
+                            ActivityType::Space(type_)
+                        } else {
+                            log::error!(
+                                "Unknown activity type `{}`, returning Unknown",
+                                activity_type
+                            );
+                            ActivityType::Unknown(format!(
+                                "conversation.activity.{}",
+                                activity_type
+                            ))
+                        }
+                    }
                 }
             }
             "conversation.highlight" => ActivityType::Highlight,
@@ -629,6 +647,7 @@ impl From<ActivityType> for GlobalIdType {
     fn from(a: ActivityType) -> Self {
         match a {
             ActivityType::Message(_) => Self::Message,
+            ActivityType::AdaptiveCardSubmit => Self::AttachmentAction,
             ActivityType::Unknown(_) => Self::Unknown,
             a => {
                 log::error!(
