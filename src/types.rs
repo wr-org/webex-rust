@@ -2,6 +2,7 @@
 //! Basic types for Webex Teams APIs
 
 use crate::adaptive_card::AdaptiveCard;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -382,15 +383,20 @@ impl MessageId {
         let cluster = cluster.as_deref().unwrap_or("us");
 
         let id = match Uuid::parse_str(&id) {
-            Ok(_) => base64::encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
+            Ok(_) => base64::engine::general_purpose::STANDARD
+                .encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
             Err(_) => id,
         };
         debug_assert!(
-            String::from_utf8(base64::decode(&id).unwrap())
-                .unwrap()
-                .split('/')
-                .nth(3)
-                .unwrap()
+            String::from_utf8(
+                base64::engine::general_purpose::STANDARD
+                    .decode(&id)
+                    .unwrap()
+            )
+            .unwrap()
+            .split('/')
+            .nth(3)
+            .unwrap()
                 == "MESSAGE"
         );
         Self { id }
@@ -428,7 +434,8 @@ impl Target {
     /// Turns a `Target` into a cluster - used for message geodata
     pub(crate) fn get_cluster(&self) -> String {
         let target_info = String::from_utf8(
-            base64::decode(&self.global_id)
+            base64::engine::general_purpose::STANDARD
+                .decode(&self.global_id)
                 .expect("event.data.target.globalId should be a base64 string"),
         )
         .expect("decoded globalId should be a valid utf-8 string");
