@@ -1,6 +1,6 @@
 [package]
 name = "webex"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Scott Hutton <shutton@pobox.com>", "Milan Stastny <milan@stastnej.ch>"]
 edition = "2018"
 description = "Interface to Webex Teams REST and WebSocket APIs"
