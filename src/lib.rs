@@ -37,6 +37,7 @@ use error::{Error, ErrorKind};
 
 use crate::adaptive_card::AdaptiveCard;
 use crate::types::Attachment;
+use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
@@ -115,7 +116,7 @@ impl WebexEventStream {
                                 Err(e) => return Err(e),
                             };
                         }
-                        Err(tungstenite::error::Error::Protocol(e)) => {
+                        Err(tokio_tungstenite::tungstenite::Error::Protocol(e)) => {
                             // Protocol error probably requires a connection reset
                             self.is_open = false;
                             return Err(e.to_string().into());
@@ -205,9 +206,7 @@ impl Webex {
             Ok(d) => d,
             Err(e) => {
                 warn!("Failed to get devices {}", e);
-                if let Err(e) = self.setup_devices().await {
-                    return Err(e);
-                };
+                self.setup_devices().await?;
                 match self.get_devices().await {
                     Ok(d) => d,
                     Err(e) => {
@@ -296,7 +295,8 @@ impl Webex {
         let rest_method = match Uuid::parse_str(id) {
             Ok(_) => format!(
                 "attachment/actions/{}",
-                base64::encode(format!("ciscospark://us/ATTACHMENT_ACTION/{}", id))
+                base64::engine::general_purpose::STANDARD
+                    .encode(format!("ciscospark://us/ATTACHMENT_ACTION/{}", id))
             ),
             Err(_) => {
                 format!("attachment/actions/{}", id)
@@ -334,7 +334,8 @@ impl Webex {
         let rest_method = match Uuid::parse_str(id) {
             Ok(_) => format!(
                 "rooms/{}",
-                base64::encode(format!("ciscospark://us/ROOM/{}", id))
+                base64::engine::general_purpose::STANDARD
+                    .encode(format!("ciscospark://us/ROOM/{}", id))
             ),
             Err(_) => {
                 format!("rooms/{}", id)
@@ -352,7 +353,8 @@ impl Webex {
         let rest_method = match Uuid::parse_str(id) {
             Ok(_) => format!(
                 "people/{}",
-                base64::encode(format!("ciscospark://us/PEOPLE/{}", id))
+                base64::engine::general_purpose::STANDARD
+                    .encode(format!("ciscospark://us/PEOPLE/{}", id))
             ),
             Err(_) => {
                 format!("people/{}", id)
