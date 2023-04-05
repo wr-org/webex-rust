@@ -389,7 +389,7 @@ impl Authorization {
             id: Uuid::new_v4().to_string(),
             auth_type: "authorization".to_string(),
             data: AuthToken {
-                token: format!("Bearer {}", token),
+                token: format!("Bearer {token}"),
             },
         }
     }
@@ -784,8 +784,8 @@ impl GlobalId {
             Ok(())
         } else {
             Err(format!(
-                "GlobalId type {} does not match expected type {}",
-                self.type_, expected_type
+                "GlobalId type {} does not match expected type {expected_type}",
+                self.type_
             )
             .into())
         }

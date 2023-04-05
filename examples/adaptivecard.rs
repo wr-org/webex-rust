@@ -8,7 +8,7 @@ pub(crate) struct Config {
 }
 use std::collections::HashMap;
 
-use tokio;
+
 use webex::{
     self,
     adaptive_card::{AdaptiveCard, CardElement},
@@ -78,13 +78,11 @@ async fn handle_adaptive_card_init(webex: &webex::Webex, actions: &webex::Attach
         .inputs
         .as_ref()
         .and_then(|inputs| inputs.get("input2"));
-    match (input1, input2) {
-        (Some(input1), Some(input2)) => {
-            println!("Recieved initial adaptive card, inputs {} and {}", input1, input2);
-            return;
-        }
-        _ => {}
+    if let (Some(input1), Some(input2)) = (input1, input2) {
+        println!("Recieved initial adaptive card, inputs {} and {}", input1, input2);
+        return;
     }
+
     let mut reply = webex::MessageOut::from(actions);
     reply.text = Some(format!(
         "Your replies were: {:?}",

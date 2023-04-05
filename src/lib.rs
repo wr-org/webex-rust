@@ -211,9 +211,9 @@ impl WebexEventStream {
                                 debug!("Authentication succeeded");
                                 Ok(())
                             }
-                            _ => Err(format!("Received {:?} in reply to auth message", msg).into()),
+                            _ => Err(format!("Received {msg:?} in reply to auth message").into()),
                         },
-                        Err(e) => Err(format!("Received error from websocket: {}", e).into()),
+                        Err(e) => Err(format!("Received error from websocket: {e}").into()),
                     },
                     None => Err("Websocket closed".to_string().into()),
                 }
@@ -241,13 +241,13 @@ impl Webex {
             id,
             client,
             token: token.to_string(),
-            bearer: format!("Bearer {}", token),
+            bearer: format!("Bearer {token}"),
             host_prefix: HashMap::new(),
             device: DeviceData {
                 device_name: Some("rust-client".to_string()),
                 device_type: Some("DESKTOP".to_string()),
                 localized_model: Some("rust".to_string()),
-                model: Some(format!("rust-v{}", CRATE_VERSION)),
+                model: Some(format!("rust-v{CRATE_VERSION}")),
                 name: Some("rust-spark-client".to_string()),
                 system_name: Some("rust-spark-client".to_string()),
                 system_version: Some(CRATE_VERSION.to_string()),
@@ -368,7 +368,7 @@ impl Webex {
             return Err("Can't get mercury URL with no orgs".into());
         }
         let org_id = &orgs[0].id;
-        let api_url = format!("limited/catalog?format=hostmap&orgId={}", org_id);
+        let api_url = format!("limited/catalog?format=hostmap&orgId={org_id}");
         let catalogs = self.api_get::<CatalogReply>(&api_url).await?;
         let mercury_url = catalogs.service_links.wdm;
 
@@ -429,10 +429,10 @@ impl Webex {
             .collect();
         let futures: Vec<_> = team_endpoints
             .iter()
-            .map(|endpoint| self.api_get::<ListResult<Room>>(&endpoint))
+            .map(|endpoint| self.api_get::<ListResult<Room>>(endpoint))
             .collect();
         let teams_rooms = try_join_all(futures).await?;
-        for room in teams_rooms.into_iter() {
+        for room in teams_rooms {
             all_rooms.extend(room.items);
         }
         Ok(all_rooms)
@@ -561,7 +561,7 @@ impl Webex {
             .host_prefix
             .get(rest_method_trimmed)
             .unwrap_or(&default_prefix);
-        let url = format!("{}/{}", prefix, rest_method);
+        let url = format!("{prefix}/{rest_method}");
         debug!("Calling {} {:?}", http_method, url);
         let mut builder = Request::builder()
             .method(http_method)
@@ -628,7 +628,7 @@ impl Webex {
                     }
                 }
                 Error(ErrorKind::Limited(_, _), _) => Err(e),
-                _ => Err(format!("Can't decode devices reply: {}", e).into()),
+                _ => Err(format!("Can't decode devices reply: {e}").into()),
             },
         }
     }
