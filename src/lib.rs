@@ -404,9 +404,12 @@ impl Webex {
     }
 
     /// Delete a message by ID
+    #[deprecated(
+        since = "0.9.0",
+        note = "Please use `webex::delete::<Message>(id)` instead"
+    )]
     pub async fn delete_message(&self, id: &GlobalId) -> Result<(), Error> {
-        let rest_method = format!("messages/{}", id.id());
-        self.api_delete(rest_method.as_str()).await
+        self.delete::<Message>(id).await
     }
 
     /// Get available rooms
@@ -481,6 +484,18 @@ impl Webex {
         self.api_get::<T>(rest_method.as_str()).await.chain_err(|| {
             format!(
                 "Failed to get {} with id {:?}",
+                std::any::type_name::<T>(),
+                id
+            )
+        })
+    }
+
+    /// Delete a resource from an ID
+    pub async fn delete<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<(), Error> {
+        let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
+        self.api_delete(rest_method.as_str()).await.chain_err(|| {
+            format!(
+                "Failed to delete {} with id {:?}",
                 std::any::type_name::<T>(),
                 id
             )
