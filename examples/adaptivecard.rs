@@ -8,7 +8,6 @@ pub(crate) struct Config {
 }
 use std::collections::HashMap;
 
-
 use webex::{
     self,
     adaptive_card::{AdaptiveCard, CardElement},
@@ -63,7 +62,10 @@ async fn handle_adaptive_card(webex: &webex::Webex, event: &webex::Event) {
     };
     let which_card = actions.inputs.as_ref().and_then(|inputs| inputs.get("id"));
     match which_card {
-        None => println!("ERROR: expected card to have both inputs and id, got {:?}", actions),
+        None => println!(
+            "ERROR: expected card to have both inputs and id, got {:?}",
+            actions
+        ),
         Some(s) => match s.as_str() {
             "init" => handle_adaptive_card_init(webex, &actions).await,
             id => println!("AdaptiveCard id {id} not handled!"),
@@ -73,20 +75,29 @@ async fn handle_adaptive_card(webex: &webex::Webex, event: &webex::Event) {
 
 async fn handle_adaptive_card_init(webex: &webex::Webex, actions: &webex::AttachmentAction) {
     // get attachmentactions
-    let input1 = actions.inputs.as_ref().and_then(|inputs| inputs.get("input1"));
+    let input1 = actions
+        .inputs
+        .as_ref()
+        .and_then(|inputs| inputs.get("input1"));
     let input2 = actions
         .inputs
         .as_ref()
         .and_then(|inputs| inputs.get("input2"));
     if let (Some(input1), Some(input2)) = (input1, input2) {
-        println!("Recieved initial adaptive card, inputs {} and {}", input1, input2);
+        println!(
+            "Recieved initial adaptive card, inputs {} and {}",
+            input1, input2
+        );
         return;
     }
 
     let mut reply = webex::MessageOut::from(actions);
     reply.text = Some(format!(
         "Your replies were: {:?}",
-        actions.inputs.as_ref().expect("expected action to have inputs")
+        actions
+            .inputs
+            .as_ref()
+            .expect("expected action to have inputs")
     ));
     webex
         .send_message(&reply)
@@ -126,7 +137,9 @@ async fn respond_to_message(webex: &webex::Webex, config: &Config, event: &webex
     // Send event card
     reply.text = Some("Welcome to Adaptivecard Tester Bot".into());
     let mut body = CardElement::container();
-    body.add_element(CardElement::text_block("Welcome to Adaptivecard Tester Bot!"));
+    body.add_element(CardElement::text_block(
+        "Welcome to Adaptivecard Tester Bot!",
+    ));
     body.add_element(
         CardElement::column_set()
             .add_column(

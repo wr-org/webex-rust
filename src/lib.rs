@@ -542,7 +542,11 @@ impl Webex {
         let reply = self
             .call_web_api_raw(http_method, rest_method, body)
             .await?;
-        serde_json::from_str(reply.as_str()).map_err(|e| {
+        let mut reply_str = reply.as_str();
+        if reply_str.is_empty() {
+            reply_str = "null";
+        }
+        serde_json::from_str(reply_str).map_err(|e| {
             debug!("Couldn't parse reply for {} call: {}", rest_method, e);
             debug!("Source JSON: {}", reply);
             Error::with_chain(e, "failed to parse reply")
