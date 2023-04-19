@@ -520,7 +520,7 @@ impl CardElement {
     }
 
     /// Set container contents vertical alignment
-    pub fn set_container_vertical_alignment(&mut self, align: VerticalContentAlignment) -> Self {
+    pub fn set_vertical_alignment(&mut self, align: VerticalContentAlignment) -> Self {
         if let Self::Container { vertical_content_alignment, .. } = self {
             *vertical_content_alignment = Some(align);
         }
