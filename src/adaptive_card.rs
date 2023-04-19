@@ -518,6 +518,15 @@ impl CardElement {
         }
         self.into()
     }
+
+    /// Set container contents vertical alignment
+    pub fn set_container_vertical_alignment(&mut self, align: VerticalContentAlignment) -> Self {
+        if let Self::Container { vertical_content_alignment, .. } = self {
+            *vertical_content_alignment = Some(align);
+        }
+        self.into()
+    }
+
     /// Create input.Text
     #[must_use]
     pub fn input_text<T: Into<String>, S: Into<String>>(id: T, value: Option<S>) -> Self {

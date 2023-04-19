@@ -548,7 +548,7 @@ impl Webex {
         }
         serde_json::from_str(reply_str).map_err(|e| {
             debug!("Couldn't parse reply for {} call: {}", rest_method, e);
-            debug!("Source JSON: {}", reply);
+            debug!("Source JSON: `{}`", reply_str);
             Error::with_chain(e, "failed to parse reply")
         })
     }
