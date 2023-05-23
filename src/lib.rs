@@ -655,7 +655,7 @@ impl From<&Message> for MessageOut {
     fn from(msg: &Message) -> Self {
         let mut new_msg = Self::default();
 
-        if msg.room_type == Some("group".to_string()) {
+        if msg.room_type == Some(RoomType::Group) {
             new_msg.room_id = msg.room_id.clone();
         } else if let Some(person_id) = &msg.person_id {
             new_msg.to_person_id = Some(person_id.clone());
@@ -664,6 +664,22 @@ impl From<&Message> for MessageOut {
         }
 
         new_msg
+    }
+}
+
+impl Message {
+    /// Reply to a message.
+    /// Posts the reply in the same chain as the replied-to message.
+    /// Contrast with [`MessageOut::from()`] which only replies in the same room.
+    #[must_use]
+    pub fn reply(&self) -> MessageOut {
+        let mut msg = MessageOut::from(self);
+        msg.parent_id = self
+            .parent_id
+            .as_deref()
+            .or(self.id.as_deref())
+            .map(ToOwned::to_owned);
+        msg
     }
 }
 

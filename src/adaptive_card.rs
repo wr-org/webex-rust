@@ -521,7 +521,11 @@ impl CardElement {
 
     /// Set container contents vertical alignment
     pub fn set_vertical_alignment(&mut self, align: VerticalContentAlignment) -> Self {
-        if let Self::Container { vertical_content_alignment, .. } = self {
+        if let Self::Container {
+            vertical_content_alignment,
+            ..
+        } = self
+        {
             *vertical_content_alignment = Some(align);
         }
         self.into()
@@ -613,7 +617,7 @@ impl CardElement {
     ///
     /// # Arguments
     ///
-    /// * `text` - Text to set to the new text block(Must implement Into<String>
+    /// * `text` - Text to set to the new text block (Must implement `Into<String>`)
     #[must_use]
     pub fn text_block<T: Into<String>>(text: T) -> Self {
         Self::TextBlock {

@@ -167,6 +167,17 @@ pub struct MessageOut {
     pub attachments: Option<Vec<Attachment>>,
 }
 
+/// Type of room
+#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RoomType {
+    #[default]
+    /// 1:1 private chat
+    Direct,
+    /// Group room
+    Group,
+}
+
 /// Webex Teams message information
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -178,11 +189,8 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The room type.
-    ///
-    /// direct - 1:1 room
-    /// group - group room
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub room_type: Option<String>,
+    pub room_type: Option<RoomType>,
     /// The person ID of the recipient when sending a private 1:1 message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
@@ -481,7 +489,10 @@ pub enum ActivityType {
 pub enum MessageActivity {
     /// A message was posted
     Posted,
-    /// A message was forwarded
+    /// A message was posted with attachments
+    /// TODO: Should this be merged with [`Self::Posted`]? Could have a field to determine
+    /// attachments/no attachments, or we can let the user figure that out from the message
+    /// instance.
     Shared,
     /// A message was acknowledged
     Acknowledged,
@@ -596,7 +607,7 @@ impl Event {
             "status.start_typing" => ActivityType::StartTyping,
             "locus.difference" => ActivityType::Locus,
             "janus.user_sessions" => ActivityType::Janus,
-
+            //"apheleia.subscription_update" ??
             e => {
                 log::error!("Unknown data.event_type `{}`, returning Unknown", e);
                 ActivityType::Unknown(e.to_string())
