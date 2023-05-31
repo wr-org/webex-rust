@@ -5,7 +5,7 @@ error_chain! {
     foreign_links {
         Io(std::io::Error);
         Json(SerdeError);
-        UTF8(std::string::FromUtf8Error);
+        UTF8(std::str::Utf8Error);
         Hyper(HyperError);
     }
     errors {
@@ -32,6 +32,11 @@ error_chain! {
         Tungstenite(e: tokio_tungstenite::tungstenite::Error, t: String) {
             description("Failed WS")
             display("{} {}", e, t)
+        }
+
+        Api(s: &'static str) {
+            description("The Webex API has changed, breaking the library's assumptions. This should be resolved in the next library update.")
+            display("API changed: {}", s)
         }
     }
 }

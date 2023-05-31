@@ -1,14 +1,60 @@
 #![deny(missing_docs)]
 //! Basic types for Webex Teams APIs
 
-use crate::adaptive_card::AdaptiveCard;
+use crate::{adaptive_card::AdaptiveCard, error, error::ResultExt};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use uuid::Uuid;
+
+pub(crate) use api::{Gettable, ListResult};
+
+mod api {
+    //! Private crate to hold all types that the user shouldn't have to interact with.
+    use super::{AttachmentAction, Message, Organization, Person, Room, Team};
+
+    /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
+    /// in a private crate so users don't see it.
+    pub trait Gettable {
+        /// Endpoint to query to perform an HTTP GET request with an id (to get an instance), or
+        /// without an id (to list them).
+        const API_ENDPOINT: &'static str;
+    }
+
+    impl Gettable for Message {
+        const API_ENDPOINT: &'static str = "messages";
+    }
+
+    impl Gettable for Organization {
+        const API_ENDPOINT: &'static str = "organizations";
+    }
+
+    impl Gettable for AttachmentAction {
+        const API_ENDPOINT: &'static str = "attachment/actions";
+    }
+
+    impl Gettable for Room {
+        const API_ENDPOINT: &'static str = "rooms";
+    }
+
+    impl Gettable for Person {
+        const API_ENDPOINT: &'static str = "people";
+    }
+
+    impl Gettable for Team {
+        const API_ENDPOINT: &'static str = "teams";
+    }
+
+    #[derive(crate::types::Deserialize)]
+    pub struct ListResult<T> {
+        pub items: Vec<T>,
+    }
+}
 
 /// Webex Teams room information
 #[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Room {
     /// A unique identifier for the room.
     pub id: String,
@@ -21,43 +67,109 @@ pub struct Room {
     #[serde(rename = "type")]
     pub room_type: String,
     /// Whether the room is moderated (locked) or not.
-    #[serde(rename = "isLocked")]
     pub is_locked: bool,
     /// The ID for the team with which this room is associated.
-    #[serde(rename = "teamId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
     /// The date and time of the room's last activity.
-    #[serde(rename = "lastActivity")]
     pub last_activity: String,
     /// The ID of the person who created this room.
-    #[serde(rename = "creatorId")]
     pub creator_id: String,
     /// The date and time the room was created.
     pub created: String,
 }
 
-/// API reply holding the room vector
+/// Holds details about the organization an account belongs to.
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Organization {
+    /// Id of the org.
+    pub id: String,
+    /// Display name of the org
+    pub display_name: String,
+    /// Date and time the org was created
+    pub created: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+/// Holds details about a team that includes the account.
+pub struct Team {
+    /// Id of the team
+    pub id: String,
+    /// Name of the team
+    pub name: String,
+    /// Date and time the team was created
+    pub created: String,
+    /// Team description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CatalogReply {
+    pub service_links: Catalog,
+}
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct RoomsReply {
-    pub items: Vec<Room>,
+#[serde(rename_all = "kebab-case")]
+pub struct Catalog {
+    pub atlas: String,
+    #[serde(rename = "broadworksIdpProxy")]
+    pub broadworks_idp_proxy: String,
+    #[serde(rename = "clientLogs")]
+    pub client_logs: String,
+    pub ecomm: String,
+    pub fms: String,
+    pub idbroker: String,
+    pub idbroker_guest: String,
+    pub identity: String,
+    pub identity_guest_cs: String,
+    pub license: String,
+    #[serde(rename = "meetingRegistry")]
+    pub meeting_registry: String,
+    pub metrics: String,
+    pub oauth_helper: String,
+    pub settings_service: String,
+    pub u2c: String,
+    /// wdm is the url used for fetching devices.
+    pub wdm: String,
+    pub web_authentication: String,
+    pub webex_appapi_service: String,
+}
+
+/// Destination for a `MessageOut`
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum Destination {
+    /// Post a message in this room
+    RoomId(String),
+    /// Post a message to a person, using their user ID
+    ToPersonId(String),
+    /// Post a message to a person, using their email
+    ToPersonEmail(String),
 }
 
 /// Outgoing message
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageOut {
     /// The parent message to reply to.
-    #[serde(rename = "parentId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
     /// The room ID of the message.
-    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonEmail", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
+    // TODO - should we use globalIDs? We should check this field before the message is sent
+    // rolls up room_id, to_person_id, and to_person_email all in one field :)
+    //#[serde(flatten)]
+    //pub deliver_to: Option<Destination>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text. The maximum message length is 7439 bytes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -72,26 +184,35 @@ pub struct MessageOut {
     pub attachments: Option<Vec<Attachment>>,
 }
 
+/// Type of room
+#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RoomType {
+    #[default]
+    /// 1:1 private chat
+    Direct,
+    /// Group room
+    Group,
+}
+
 /// Webex Teams message information
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
     /// The unique identifier for the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// The room ID of the message.
-    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The room type.
-    ///
-    /// direct - 1:1 room
-    /// group - group room
-    #[serde(rename = "roomType", skip_serializing_if = "Option::is_none")]
-    pub room_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_type: Option<RoomType>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(rename = "toPersonEmail", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,16 +227,16 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
     /// The person ID of the message author.
-    #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The email address of the message author.
-    #[serde(rename = "personEmail", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_email: Option<String>,
     /// People IDs for anyone mentioned in the message.
-    #[serde(rename = "mentionedPeople", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentioned_people: Option<Vec<String>>,
     /// Group names for the groups mentioned in the message.
-    #[serde(rename = "mentionedGroups", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentioned_groups: Option<Vec<String>>,
     /// Message content attachments attached to the message.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,19 +247,13 @@ pub struct Message {
     /// The date and time the message was updated, if it was edited.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
+    /// The ID of the "parent" message (the start of the reply chain)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
 }
 
-/// API Message reply
-#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct MessagesReply {
-    pub items: Vec<Message>,
-}
-
-/// API Empty reply
-#[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug)]
-pub struct EmptyReply {}
+pub(crate) struct EmptyReply {}
 
 /// API Error
 #[allow(missing_docs)]
@@ -149,7 +264,7 @@ pub struct Error {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct DevicesReply {
+pub(crate) struct DevicesReply {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub devices: Option<Vec<DeviceData>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -238,7 +353,7 @@ pub struct DeviceFeatureData {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::struct_excessive_bools)]
 pub struct DeviceCapabilities {
     pub group_call_supported: bool,
     pub local_notification_supported: bool,
@@ -248,7 +363,7 @@ pub struct DeviceCapabilities {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::struct_excessive_bools)]
 pub struct DeviceSettings {
     pub reporting_site_url: String,
     pub reporting_site_desc: String,
@@ -286,27 +401,38 @@ pub struct DeviceSettings {
 pub struct Authorization {
     pub id: String,
     #[serde(rename = "type")]
-    pub _type: String,
-    pub data: AuthToken,
+    pub auth_type: String,
+    data: AuthToken,
 }
 
-#[allow(missing_docs)]
+impl Authorization {
+    /// Create a new `Authorization` object from a token
+    /// id is a random UUID v4
+    #[must_use]
+    pub fn new(token: &str) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            auth_type: "authorization".to_string(),
+            data: AuthToken {
+                token: format!("Bearer {token}"),
+            },
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
-pub struct AuthToken {
+pub(crate) struct AuthToken {
     pub token: String,
 }
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Actor {
     pub id: String,
-    #[serde(rename = "objectType")]
     pub object_type: String,
-    #[serde(rename = "displayName")]
-    pub display_name: String,
-    #[serde(rename = "orgId")]
+    pub display_name: Option<String>,
     pub org_id: Option<String>,
-    #[serde(rename = "emailAddress")]
     pub email_address: Option<String>,
     #[serde(rename = "entryUUID")]
     pub entry_uuid: String,
@@ -316,12 +442,12 @@ pub struct Actor {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct EventData {
-    #[serde(rename = "eventType")]
     pub event_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<Actor>,
-    #[serde(rename = "conversationId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activity: Option<Activity>,
@@ -329,9 +455,9 @@ pub struct EventData {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Activity {
     pub id: String,
-    #[serde(rename = "objectType")]
     pub object_type: String,
     pub url: String,
     pub published: String,
@@ -340,70 +466,357 @@ pub struct Activity {
     pub object: Object,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<Target>,
-    #[serde(rename = "clientTempId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_temp_id: Option<String>,
-    #[serde(rename = "encryptionKeyUrl", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_url: Option<String>,
-    #[serde(rename = "vectorCounters", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vector_counters: Option<VectorCounters>,
 }
 
-#[allow(missing_docs)]
-impl Activity {
+/// Get what activity an [`Activity`] represents.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActivityType {
+    /// Message changed - see [`MessageActivity`] for details.
+    Message(MessageActivity),
+    /// The space the bot is in has changed - see [`SpaceActivity`] for details.
+    Space(SpaceActivity),
+    /// The user has submitted an [`AdaptiveCard`].
+    AdaptiveCardSubmit,
+    /// Meeting event.
+    /// TODO: This needs to be broken down like `Message` and `Space`, if anyone cares.
+    Locus,
+    /// Call event.
+    /// TODO: This may need to be broken down.
+    /// May provide details about call insights/recording?
+    Janus,
+    /// Someone started typing.
+    StartTyping,
+    /// Not sure? perhaps when someone catches up in the conversation?
+    Highlight,
+    /// Unknown activity. Contains a representation of the string that failed to parse - unknown
+    /// activities will contain `event.data.event_type`, otherwise if it's an Unknown
+    /// `conversation.activity` type (belonging in Message or Space), the string will be
+    /// `"conversation.activity.{event.data.activity.verb}"`, for example it would be
+    /// `"conversation.activity.post"` for `Message(MessageActivity::Posted)`
+    Unknown(String),
+}
+/// Specifics of what type of activity [`ActivityType::Message`] represents.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MessageActivity {
+    /// A message was posted
+    Posted,
+    /// A message was posted with attachments
+    /// TODO: Should this be merged with [`Self::Posted`]? Could have a field to determine
+    /// attachments/no attachments, or we can let the user figure that out from the message
+    /// instance.
+    Shared,
+    /// A message was acknowledged
+    Acknowledged,
+    /// A message was deleted
+    Deleted,
+}
+/// Specifics of what type of activity [`ActivityType::Space`] represents.
+/// TODO: should we merge [`Self::Created`]/[`Self::Joined`]?
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SpaceActivity {
+    /// A new space was created with the bot
+    Created,
+    /// Bot was added to a space... or a reaction was added to a message?
+    /// TODO: figure out a way to tell these events apart
+    Joined,
+    /// Bot left (was kicked out of) a space
+    Left,
+    /// Space was changed (i.e. name change, cover image changed, space picture changed).
+    /// Also includes meeting changes (meeting name or schedule)
+    Changed,
+    /// New meeting scheduled
+    MeetingScheduled,
+    /// Space became moderated
+    Locked,
+    /// Space became unmoderated
+    Unlocked,
+
+    /// A new moderator was assigned
+    ModeratorAssigned,
+    /// A moderator was unassigned
+    ModeratorUnassigned,
+}
+impl TryFrom<&str> for MessageActivity {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, ()> {
+        match s {
+            "post" => Ok(Self::Posted),
+            "share" => Ok(Self::Shared),
+            "acknowledge" => Ok(Self::Acknowledged),
+            "delete" => Ok(Self::Deleted),
+            _ => Err(()),
+        }
+    }
+}
+impl TryFrom<&str> for SpaceActivity {
+    type Error = ();
+    fn try_from(s: &str) -> Result<Self, ()> {
+        match s {
+            "create" => Ok(Self::Created),
+            "add" => Ok(Self::Joined),
+            "leave" => Ok(Self::Left),
+            "lock" => Ok(Self::Locked),
+            "unlock" => Ok(Self::Unlocked),
+            "update" | "assign" | "unassign" => Ok(Self::Changed),
+            "schedule" => Ok(Self::MeetingScheduled),
+            "assignModerator" => Ok(Self::ModeratorAssigned),
+            "unassignModerator" => Ok(Self::ModeratorUnassigned),
+            _ => Err(()),
+        }
+    }
+}
+impl MessageActivity {
+    /// True if this is a new message ([`Self::Posted`] or [`Self::Shared`]).
     #[must_use]
-    pub fn get_message_id(&self) -> MessageId {
-        MessageId::new_with_cluster(
-            self.id.clone(),
-            self.target.as_ref().map(Target::get_cluster),
+    pub const fn is_created(&self) -> bool {
+        matches!(*self, Self::Posted | Self::Shared)
+    }
+}
+
+impl Event {
+    /// Get the type of resource the event corresponds to.
+    /// Also contains details about the event action for some event types.
+    /// For more details, check [`ActivityType`].
+    #[must_use]
+    pub fn activity_type(&self) -> ActivityType {
+        match self.data.event_type.as_str() {
+            "conversation.activity" => {
+                let activity_type = self
+                    .data
+                    .activity
+                    .as_ref()
+                    .expect("Conversation activity should have activity set")
+                    .verb
+                    .as_str();
+                #[allow(clippy::option_if_let_else)]
+                match activity_type {
+                    // TODO: This probably has more options
+                    // check self.data.activity.object.object_type == "submit"
+                    "cardAction" => ActivityType::AdaptiveCardSubmit,
+                    _ => {
+                        // TODO: move these into their own `match` branches when we have
+                        // match-if-let
+                        // Tracking issue: https://github.com/rust-lang/rust/issues/51114
+                        if let Ok(type_) = MessageActivity::try_from(activity_type) {
+                            ActivityType::Message(type_)
+                        } else if let Ok(type_) = SpaceActivity::try_from(activity_type) {
+                            ActivityType::Space(type_)
+                        } else {
+                            log::error!(
+                                "Unknown activity type `{}`, returning Unknown",
+                                activity_type
+                            );
+                            ActivityType::Unknown(format!(
+                                "conversation.activity.{}",
+                                activity_type
+                            ))
+                        }
+                    }
+                }
+            }
+            "conversation.highlight" => ActivityType::Highlight,
+            "status.start_typing" => ActivityType::StartTyping,
+            "locus.difference" => ActivityType::Locus,
+            "janus.user_sessions" => ActivityType::Janus,
+            //"apheleia.subscription_update" ??
+            e => {
+                log::error!("Unknown data.event_type `{}`, returning Unknown", e);
+                ActivityType::Unknown(e.to_string())
+            }
+        }
+    }
+    /// A function to extract a global ID from an activity.
+    /// `event.data.activity.id` is a UUID, which can no longer be used for API requests, meaning any attempt
+    /// at using this as an ID in a `Webex::get_*` will fail.
+    /// Users should use this function to get a [`GlobalId`], which works with the updated API.
+    pub fn get_global_id(&self) -> GlobalId {
+        // Safety: ID should be fine since it's from the API (guaranteed to be UUID or b64 URI).
+        //
+        // NOTE: Currently uses None as default cluster
+        // this means any UUID ID will default to cluster "us"
+        // When we start supporting other clusters, if the API is still returning UUID URIs, we
+        // need to investigate how to get the proper cluster. However, for now, the default is
+        // always fine.
+        // Note, we do not want to parse b64 URI into cluster, since cluster information is already
+        // part of the URI and we don't need any additional information (the "cluster" argument is
+        // ignored).
+        let self_activity = self.data.activity.as_ref();
+        GlobalId::new_with_cluster_unchecked(
+            self.activity_type().into(),
+            self_activity.map_or_else(|| self.id.clone(), |a| a.id.clone()),
+            None,
         )
     }
 }
 
-#[allow(missing_docs)]
+/// This represents the type of an ID produced by the API, to prevent (for example) message IDs
+/// being used for a room ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlobalIdType {
+    /// This GlobalId represents the ID of a message
+    Message,
+    /// Corresponds to the ID of a person
+    Person,
+    /// Corresponds to the ID of a room
+    Room,
+    /// Retrieves a specific attachment
+    AttachmentAction,
+    /// This GlobalId represents the ID of something not currently recognised, any API requests
+    /// with this GlobalId will produce an error.
+    Unknown,
+}
+impl From<ActivityType> for GlobalIdType {
+    fn from(a: ActivityType) -> Self {
+        match a {
+            ActivityType::Message(_) => Self::Message,
+            ActivityType::AdaptiveCardSubmit => Self::AttachmentAction,
+            ActivityType::Unknown(_) => Self::Unknown,
+            a => {
+                log::error!(
+                    "Failed to convert {:?} to GlobalIdType, this may cause errors later",
+                    a
+                );
+                Self::Unknown
+            }
+        }
+    }
+}
+impl std::fmt::Display for GlobalIdType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Message => "MESSAGE",
+                Self::Person => "PEOPLE",
+                Self::Room => "ROOM",
+                Self::AttachmentAction => "ATTACHMENT_ACTION",
+                Self::Unknown => "<UNKNOWN>",
+            }
+        )
+    }
+}
+
+/// This type is used to hold the ID of a message, room, person etc.
+/// It is created from a certain resource type to make it impossible to use a person ID to fetch a
+/// message, or vice versa.
 #[derive(Debug, Clone)]
-pub struct MessageId {
+#[must_use]
+pub struct GlobalId {
     id: String,
+    type_: GlobalIdType,
 }
 
-#[allow(missing_docs)]
-impl From<String> for MessageId {
-    fn from(s: String) -> MessageId {
-        MessageId::new(s)
+impl GlobalId {
+    /// Create a new ``GlobalId``, with an ID type as well as an API ID (which can be either old
+    /// UUID-style, or new base64 URI style).
+    pub fn new(type_: GlobalIdType, id: String) -> Result<Self, error::Error> {
+        Self::new_with_cluster(type_, id, None)
     }
-}
-
-#[allow(missing_docs)]
-impl MessageId {
-    #[must_use]
-    pub fn new(id: String) -> Self {
-        Self::new_with_cluster(id, None)
+    /// Given an ID and a possible cluster, generate a new geo-ID.
+    /// Will fail if given a ``GlobalIdType`` that doesn't correspond to a particular type (message, room,
+    /// etc.)
+    /// # Arguments
+    /// * ``type_: GlobalIdType`` - the type of the ID being constructed
+    /// * ``id: String`` - the ID, either old (UUID) or new (base64 geo-ID)
+    /// * ``cluster: Option<&str>`` - cluster for geo-ID. Only used if the ID is an old-style UUID.
+    /// Will default to `"us"` if not given and can't be determined from the ID - this should work
+    /// for most requests.
+    ///
+    /// # Errors
+    /// * ``ErrorKind::Msg`` if:
+    ///   * the ID type is ``GlobalIdType::Unknown``.
+    ///   * the ID is a base64 geo-ID that does not follow the format
+    ///   ``ciscospark://[cluster]/[type]/[id]``.
+    ///   * the ID is a base64 geo-ID and the type does not match the given type.
+    ///   * the ID is a base64 geo-ID and the cluster does not match the given cluster.
+    ///   * the ID is neither a UUID or a base64 geo-id.
+    pub fn new_with_cluster(
+        type_: GlobalIdType,
+        id: String,
+        cluster: Option<&str>,
+    ) -> Result<Self, error::Error> {
+        if type_ == GlobalIdType::Unknown {
+            return Err("Cannot get globalId for unknown ID type".into());
+        }
+        if let Ok(decoded_id) = base64::engine::general_purpose::STANDARD.decode(&id) {
+            let decoded_id = std::str::from_utf8(&decoded_id)
+                .chain_err(|| "Failed to turn base64 id into UTF8 string")?;
+            Self::check_id(decoded_id, cluster, &type_.to_string())?;
+        } else if Uuid::parse_str(&id).is_err() {
+            return Err("Expected ID to be base64 geo-id or uuid".into());
+        }
+        Ok(Self::new_with_cluster_unchecked(type_, id, cluster))
     }
-    #[must_use]
-    pub fn new_with_cluster(id: String, cluster: Option<String>) -> Self {
-        let cluster = cluster.as_deref().unwrap_or("us");
 
-        let id = match Uuid::parse_str(&id) {
-            Ok(_) => base64::engine::general_purpose::STANDARD
-                .encode(format!("ciscospark://{}/MESSAGE/{}", cluster, id)),
-            Err(_) => id,
+    /// Given an ID and a possible cluster, generate a new geo-ID.
+    /// Skips all checks. (If something wrong is passed, for example a [`GlobalIdType::Unknown`],
+    /// this will silently produce a bad ID that will always return a 404 from the API.)
+    pub fn new_with_cluster_unchecked(
+        type_: GlobalIdType,
+        id: String,
+        cluster: Option<&str>,
+    ) -> Self {
+        let id = if Uuid::parse_str(&id).is_ok() {
+            base64::engine::general_purpose::STANDARD.encode(format!(
+                "ciscospark://{}/{}/{}",
+                cluster.unwrap_or("us"),
+                type_,
+                id
+            ))
+        } else {
+            id
         };
-        debug_assert!(
-            String::from_utf8(
-                base64::engine::general_purpose::STANDARD
-                    .decode(&id)
-                    .unwrap()
-            )
-            .unwrap()
-            .split('/')
-            .nth(3)
-            .unwrap()
-                == "MESSAGE"
-        );
-        Self { id }
+        Self { id, type_ }
     }
+    fn check_id(id: &str, cluster: Option<&str>, type_: &str) -> Result<(), error::Error> {
+        let decoded_parts: Vec<&str> = id.split('/').collect();
+        if decoded_parts.len() != 5
+            || decoded_parts[0] != "ciscospark:"
+            || !decoded_parts[1].is_empty()
+        {
+            return Err(
+                "Expected base64 ID to be in the form ciscospark://[cluster]/[type]/[id]".into(),
+            );
+        } else if let Some(expected_cluster) = cluster {
+            if decoded_parts[2] != expected_cluster {
+                // TODO - this won't happen when we fetch the cluster ourselves, since we get it from
+                // the ID. Can we/should we skip this check somehow?
+
+                return Err(format!(
+                    "Expected base64 cluster to equal expected cluster {expected_cluster}"
+                )
+                .into());
+            }
+        } else if decoded_parts[3] != type_ {
+            return Err(format!("Expected base64 type to equal {type_}").into());
+        }
+        Ok(())
+    }
+    /// Returns the base64 geo-ID as a ``&str`` for use in API requests.
+    #[inline]
     #[must_use]
-    pub fn id(&self) -> String {
-        self.id.clone()
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Check if type is the same as expected type
+    pub fn check_type(&self, expected_type: GlobalIdType) -> Result<(), error::Error> {
+        if expected_type == self.type_ {
+            Ok(())
+        } else {
+            Err(format!(
+                "GlobalId type {} does not match expected type {expected_type}",
+                self.type_
+            )
+            .into())
+        }
     }
 }
 
@@ -417,43 +830,25 @@ pub struct VectorCounters {
 
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Target {
     pub id: String,
-    #[serde(rename = "objectType")]
     pub object_type: String,
     pub url: String,
     pub participants: MiscItems,
     pub activities: MiscItems,
     pub tags: Vec<String>,
-    #[serde(rename = "globalId")]
     pub global_id: String,
 }
 
 #[allow(missing_docs)]
-impl Target {
-    /// Turns a `Target` into a cluster - used for message geodata
-    pub(crate) fn get_cluster(&self) -> String {
-        let target_info = String::from_utf8(
-            base64::engine::general_purpose::STANDARD
-                .decode(&self.global_id)
-                .expect("event.data.target.globalId should be a base64 string"),
-        )
-        .expect("decoded globalId should be a valid utf-8 string");
-        let cluster = target_info.split('/').nth(2).expect(
-            "event.data.target.globalId should be in the form ciscospark://[cluster]/[type]/[id]",
-        );
-        cluster.to_string()
-    }
-}
-
-#[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Object {
-    #[serde(rename = "objectType")]
     pub object_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<MiscItems>,
@@ -475,20 +870,41 @@ pub struct MiscItem {
     pub object_type: String,
 }
 
+/// Alerting specified in received events.
+/// TODO: may be missing some enum variants.
+/// ALSO TODO: figure out what this does. Best guess, it refers to what alerts (e.g. a
+/// notification) an event will generate.
+/// There may be another variant for an event that may or may not make an alert (messages with
+/// mentions?)
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertType {
+    /// This event won't ever generate an alert (?)
+    #[default]
+    None,
+    /// This event will always generate an alert (?)
+    Full,
+    /// okay, no idea...
+    Visual,
+}
+
+/// Returned from [`WebexEventStream::next()`][`crate::WebexEventStream::next()`]. Contains information about the received event.
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Event {
+    /// Event ID, may be UUID or base64-encoded. Please do not use this directly, prefer to use
+    /// [`Event::get_global_id()`].
     pub id: String,
+    #[allow(missing_docs)]
     pub data: EventData,
+    /// Timestamp in milliseconds since epoch.
     pub timestamp: i64,
-    #[serde(rename = "trackingId")]
     pub tracking_id: String,
-    #[serde(rename = "alertType", skip_serializing_if = "Option::is_none")]
-    pub alert_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alert_type: Option<AlertType>,
     pub headers: HashMap<String, String>,
-    #[serde(rename = "sequenceNumber")]
     pub sequence_number: i64,
-    #[serde(rename = "filterMessage")]
     pub filter_message: bool,
 }
 
@@ -504,6 +920,7 @@ pub struct Attachment {
 
 /// Attachment action details
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct AttachmentAction {
     /// A unique identifier for the action.
     pub id: String,
@@ -511,16 +928,16 @@ pub struct AttachmentAction {
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub action_type: Option<String>,
     /// The parent message the attachment action was performed on.
-    #[serde(rename = "messageId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
     /// The action's inputs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inputs: Option<HashMap<String, serde_json::Value>>,
     /// The ID of the person who performed the action.
-    #[serde(rename = "personId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The ID of the room the action was performed within.
-    #[serde(rename = "roomId", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The date and time the action was created.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -576,11 +993,64 @@ pub struct Person {
 
 /// Phone number information
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(default)]
 pub struct PhoneNumber {
     /// Phone number type
     #[serde(rename = "type")]
     pub number_type: String,
     /// Phone number
     pub value: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn create_event(event_type: &str, activity_verb: &str) -> Event {
+        Event {
+            data: EventData {
+                event_type: event_type.to_string(),
+                activity: Some(Activity {
+                    verb: activity_verb.to_string(),
+                    ..Activity::default()
+                }),
+                ..EventData::default()
+            },
+            ..Event::default()
+        }
+    }
+
+    #[test]
+    fn event_parsing() {
+        let test_events = [
+            (
+                "conversation.activity",
+                "post",
+                ActivityType::Message(MessageActivity::Posted),
+            ),
+            (
+                "conversation.activity",
+                "share",
+                ActivityType::Message(MessageActivity::Shared),
+            ),
+            (
+                "conversation.activity",
+                "unknown",
+                ActivityType::Unknown("conversation.activity.unknown".to_string()),
+            ),
+            ("unknown", "", ActivityType::Unknown("unknown".to_string())),
+            ("conversation.highlight", "", ActivityType::Highlight),
+        ];
+        for test_e in test_events {
+            let event = create_event(test_e.0, test_e.1);
+            let result = test_e.2;
+            assert_eq!(event.activity_type(), result);
+        }
+    }
+
+    #[test]
+    fn msg_is_created() {
+        assert!(MessageActivity::Posted.is_created());
+        assert!(MessageActivity::Shared.is_created());
+        assert!(!MessageActivity::Deleted.is_created());
+    }
 }

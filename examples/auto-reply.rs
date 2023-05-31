@@ -1,5 +1,4 @@
 use std::env;
-use webex::types::MessageId;
 
 const BOT_ACCESS_TOKEN: &str = "BOT_ACCESS_TOKEN";
 const BOT_EMAIL: &str = "BOT_EMAIL";
@@ -31,33 +30,25 @@ async fn main() {
     let bot_email = env::var(BOT_EMAIL)
         .unwrap_or_else(|_| panic!("{} not specified in environment", BOT_EMAIL));
 
-    let webex = webex::Webex::new(token.as_str());
+    let webex = webex::Webex::new(token.as_str()).await;
     let mut event_stream = webex.event_stream().await.expect("event stream");
 
     while let Ok(event) = event_stream.next().await {
         // Dig out the useful bit
-        if event.data.event_type.as_str() == "conversation.activity" {
-            if let Some(activity) = &event.data.activity {
-                if activity.verb.as_str() == "post" {
-                    // The event stream doesn't contain the message -- you have to go fetch it
-                    if let Ok(msg) = webex
-                        .get_message(&MessageId::from(activity.id.clone()))
-                        .await
-                    {
-                        match &msg.person_email {
-                            // Reply as long as it doesn't appear to be our own message
-                            // In practice, this shouldn't happen since bots can't see messages
-                            // that don't specifically mention them (i.e., appears in the special
-                            // "mentions" field).
-                            Some(sender) if sender != bot_email.as_str() => {
-                                let mut reply = webex::types::MessageOut::from(&msg);
-                                reply.text =
-                                    Some(format!("{}, you said: {}", sender, msg.text.unwrap()));
-                                webex.send_message(&reply).await.unwrap();
-                            }
-                            _ => (),
-                        }
+        if event.activity_type() == webex::ActivityType::Message(webex::MessageActivity::Posted) {
+            // The event stream doesn't contain the message -- you have to go fetch it
+            if let Ok(msg) = webex.get::<webex::Message>(&event.get_global_id()).await {
+                match &msg.person_email {
+                    // Reply as long as it doesn't appear to be our own message
+                    // In practice, this shouldn't happen since bots can't see messages
+                    // that don't specifically mention them (i.e., appears in the special
+                    // "mentions" field).
+                    Some(sender) if sender != bot_email.as_str() => {
+                        let mut reply = webex::types::MessageOut::from(&msg);
+                        reply.text = Some(format!("{}, you said: {}", sender, msg.text.unwrap()));
+                        webex.send_message(&reply).await.unwrap();
                     }
+                    _ => (),
                 }
             }
         }

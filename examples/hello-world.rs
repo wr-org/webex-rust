@@ -28,7 +28,7 @@ async fn main() {
     let to_email = env::var(DEST_EMAIL)
         .unwrap_or_else(|_| panic!("{} not specified in environment", DEST_EMAIL));
 
-    let webex = webex::Webex::new(token.as_str());
+    let webex = webex::Webex::new(token.as_str()).await;
     let text = format!("Hello, {}", to_email);
 
     let msg_to_send = webex::types::MessageOut {

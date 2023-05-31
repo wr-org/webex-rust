@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![allow(clippy::return_self_not_must_use)]
 //! Adaptive Card implementation
 //!
 //! [Webex Teams currently supports only version 1.1](https://developer.webex.com/docs/cards)
@@ -36,7 +37,7 @@ pub struct AdaptiveCard {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
     /// The Adaptive Card schema.
-    /// http://adaptivecards.io/schemas/adaptive-card.json
+    /// <http://adaptivecards.io/schemas/adaptive-card.json>
     #[serde(rename = "$schema")]
     pub schema: String,
 }
@@ -45,7 +46,7 @@ impl AdaptiveCard {
     /// Create new adaptive card with mandatory defaults
     #[must_use]
     pub fn new() -> Self {
-        AdaptiveCard {
+        Self {
             card_type: "AdaptiveCard".to_string(),
             version: "1.1".to_string(),
             body: None,
@@ -64,6 +65,9 @@ impl AdaptiveCard {
     ///
     /// * `card` - `CardElement` to add
     pub fn add_body<T: Into<CardElement>>(&mut self, card: T) -> Self {
+        //self.body = self.body.map_or_else(|| Some(vec![card.into()]), |body| body.push(card.into()));
+        //self.body = Some(self.body.unwrap_or_default().push(card.into()));
+        // TODO: improve this - can we use take()?
         self.body = Some(match self.body.clone() {
             None => {
                 vec![card.into()]
@@ -95,14 +99,16 @@ impl AdaptiveCard {
     }
 }
 
-impl From<&AdaptiveCard> for AdaptiveCard {
-    fn from(item: &AdaptiveCard) -> Self {
+impl From<&Self> for AdaptiveCard {
+    #[must_use]
+    fn from(item: &Self) -> Self {
         item.clone()
     }
 }
 
-impl From<&mut AdaptiveCard> for AdaptiveCard {
-    fn from(item: &mut AdaptiveCard) -> Self {
+impl From<&mut Self> for AdaptiveCard {
+    #[must_use]
+    fn from(item: &mut Self) -> Self {
         item.clone()
     }
 }
@@ -466,14 +472,16 @@ pub enum CardElement {
     },
 }
 
-impl From<&CardElement> for CardElement {
-    fn from(item: &CardElement) -> Self {
+impl From<&Self> for CardElement {
+    #[must_use]
+    fn from(item: &Self) -> Self {
         item.clone()
     }
 }
 
-impl From<&mut CardElement> for CardElement {
-    fn from(item: &mut CardElement) -> Self {
+impl From<&mut Self> for CardElement {
+    #[must_use]
+    fn from(item: &mut Self) -> Self {
         item.clone()
     }
 }
@@ -482,8 +490,8 @@ impl From<&mut CardElement> for CardElement {
 impl CardElement {
     /// Create container
     #[must_use]
-    pub fn container() -> Self {
-        CardElement::Container {
+    pub const fn container() -> Self {
+        Self::Container {
             items: vec![],
             select_action: None,
             style: None,
@@ -496,23 +504,37 @@ impl CardElement {
     }
 
     /// Add element to Container
-    pub fn add_element<T: Into<CardElement>>(&mut self, element: T) -> Self {
-        if let CardElement::Container { items, .. } = self {
-            items.push(element.into())
+    pub fn add_element<T: Into<Self>>(&mut self, element: T) -> Self {
+        if let Self::Container { items, .. } = self {
+            items.push(element.into());
         }
         self.into()
     }
 
     /// Set Container Style
     pub fn set_container_style(&mut self, s: ContainerStyle) -> Self {
-        if let CardElement::Container { style, .. } = self {
+        if let Self::Container { style, .. } = self {
             *style = Some(s);
         }
         self.into()
     }
+
+    /// Set container contents vertical alignment
+    pub fn set_vertical_alignment(&mut self, align: VerticalContentAlignment) -> Self {
+        if let Self::Container {
+            vertical_content_alignment,
+            ..
+        } = self
+        {
+            *vertical_content_alignment = Some(align);
+        }
+        self.into()
+    }
+
     /// Create input.Text
+    #[must_use]
     pub fn input_text<T: Into<String>, S: Into<String>>(id: T, value: Option<S>) -> Self {
-        CardElement::InputText {
+        Self::InputText {
             id: id.into(),
             placeholder: None,
             is_multiline: None,
@@ -528,15 +550,16 @@ impl CardElement {
 
     /// Set Text Input Multiline
     pub fn set_multiline(&mut self, s: bool) -> Self {
-        if let CardElement::InputText { is_multiline, .. } = self {
+        if let Self::InputText { is_multiline, .. } = self {
             *is_multiline = Some(s);
         }
         self.into()
     }
 
     /// Create input.ChoiceSet
+    #[must_use]
     pub fn input_choice_set<T: Into<String>, S: Into<String>>(id: T, value: Option<S>) -> Self {
-        CardElement::InputChoiceSet {
+        Self::InputChoiceSet {
             choices: vec![],
             id: id.into(),
             is_multi_select: None,
@@ -549,8 +572,9 @@ impl CardElement {
     }
 
     /// Create input.Toggle
+    #[must_use]
     pub fn input_toggle<T: Into<String>>(id: T, value: bool) -> Self {
-        CardElement::InputToggle {
+        Self::InputToggle {
             id: id.into(),
             value: Some(value.to_string()),
             value_off: None,
@@ -564,7 +588,7 @@ impl CardElement {
 
     /// Set choiceSet Style
     pub fn set_style(&mut self, s: ChoiceInputStyle) -> Self {
-        if let CardElement::InputChoiceSet { style, .. } = self {
+        if let Self::InputChoiceSet { style, .. } = self {
             *style = Some(s);
         }
         self.into()
@@ -572,7 +596,7 @@ impl CardElement {
 
     /// Set title Style
     pub fn set_title(&mut self, s: String) -> Self {
-        if let CardElement::InputToggle { title, .. } = self {
+        if let Self::InputToggle { title, .. } = self {
             *title = Some(s);
         }
         self.into()
@@ -580,7 +604,7 @@ impl CardElement {
 
     /// Set choiceSet Style
     pub fn set_multiselect(&mut self, b: bool) -> Self {
-        if let CardElement::InputChoiceSet {
+        if let Self::InputChoiceSet {
             is_multi_select, ..
         } = self
         {
@@ -593,9 +617,10 @@ impl CardElement {
     ///
     /// # Arguments
     ///
-    /// * `text` - Text to set to the new text block(Must implement Into<String>
+    /// * `text` - Text to set to the new text block (Must implement `Into<String>`)
+    #[must_use]
     pub fn text_block<T: Into<String>>(text: T) -> Self {
-        CardElement::TextBlock {
+        Self::TextBlock {
             text: text.into(),
             wrap: None,
             color: None,
@@ -614,7 +639,7 @@ impl CardElement {
 
     /// Set Text Weight
     pub fn set_weight(&mut self, w: Weight) -> Self {
-        if let CardElement::TextBlock { weight, .. } = self {
+        if let Self::TextBlock { weight, .. } = self {
             *weight = Some(w);
         }
         self.into()
@@ -622,7 +647,7 @@ impl CardElement {
 
     /// Set Text Font Type
     pub fn set_font(&mut self, f: FontType) -> Self {
-        if let CardElement::TextBlock { font_type, .. } = self {
+        if let Self::TextBlock { font_type, .. } = self {
             *font_type = Some(f);
         }
         self.into()
@@ -630,7 +655,7 @@ impl CardElement {
 
     /// Set Text Size
     pub fn set_size(&mut self, s: Size) -> Self {
-        if let CardElement::TextBlock { size, .. } = self {
+        if let Self::TextBlock { size, .. } = self {
             *size = Some(s);
         }
         self.into()
@@ -638,7 +663,7 @@ impl CardElement {
 
     /// Set Text Color
     pub fn set_color(&mut self, c: Color) -> Self {
-        if let CardElement::TextBlock { color, .. } = self {
+        if let Self::TextBlock { color, .. } = self {
             *color = Some(c);
         }
         self.into()
@@ -646,7 +671,7 @@ impl CardElement {
 
     /// Set Text wrap
     pub fn set_wrap(&mut self, w: bool) -> Self {
-        if let CardElement::TextBlock { wrap, .. } = self {
+        if let Self::TextBlock { wrap, .. } = self {
             *wrap = Some(w);
         }
         self.into()
@@ -654,7 +679,7 @@ impl CardElement {
 
     /// Set Text subtle
     pub fn set_subtle(&mut self, s: bool) -> Self {
-        if let CardElement::TextBlock { is_subtle, .. } = self {
+        if let Self::TextBlock { is_subtle, .. } = self {
             *is_subtle = Some(s);
         }
         self.into()
@@ -662,8 +687,8 @@ impl CardElement {
 
     /// Create factSet
     #[must_use]
-    pub fn fact_set() -> CardElement {
-        CardElement::FactSet {
+    pub const fn fact_set() -> Self {
+        Self::FactSet {
             facts: vec![],
             height: None,
             id: None,
@@ -673,8 +698,8 @@ impl CardElement {
     }
 
     /// Create image
-    pub fn image<T: Into<String>>(url: T) -> CardElement {
-        CardElement::Image {
+    pub fn image<T: Into<String>>(url: T) -> Self {
+        Self::Image {
             url: url.into(),
             alt_text: None,
             background_color: None,
@@ -693,16 +718,16 @@ impl CardElement {
     /// Add fact to factSet
     pub fn add_key_value<T: Into<String>, S: Into<String>>(&mut self, title: T, value: S) -> Self {
         match self {
-            CardElement::FactSet { facts, .. } => facts.push(Fact {
+            Self::FactSet { facts, .. } => facts.push(Fact {
                 title: title.into(),
                 value: value.into(),
             }),
-            CardElement::InputChoiceSet { choices, .. } => choices.push(Choice {
+            Self::InputChoiceSet { choices, .. } => choices.push(Choice {
                 title: title.into(),
                 value: value.into(),
             }),
             _ => {
-                log::warn!("Card does not have key value type field")
+                log::warn!("Card does not have key value type field");
             }
         }
         self.into()
@@ -710,8 +735,8 @@ impl CardElement {
 
     /// Create columnSet
     #[must_use]
-    pub fn column_set() -> CardElement {
-        CardElement::ColumnSet {
+    pub const fn column_set() -> Self {
+        Self::ColumnSet {
             columns: vec![],
             select_action: None,
             id: None,
@@ -722,7 +747,7 @@ impl CardElement {
 
     /// Add column to columnSet
     pub fn add_column(&mut self, column: Column) -> Self {
-        if let CardElement::ColumnSet { columns, .. } = self {
+        if let Self::ColumnSet { columns, .. } = self {
             columns.push(column);
         }
         self.into()
@@ -731,29 +756,17 @@ impl CardElement {
     /// Set Separator
     pub fn set_separator(&mut self, s: bool) -> Self {
         match self {
-            CardElement::TextBlock { separator, .. } => {
-                *separator = Some(s);
-            }
-            CardElement::FactSet { separator, .. } => {
-                *separator = Some(s);
-            }
-            CardElement::ColumnSet { separator, .. } => {
-                *separator = Some(s);
-            }
-            CardElement::Image { separator, .. } => {
-                *separator = Some(s);
-            }
-            CardElement::InputChoiceSet { separator, .. } => {
-                *separator = Some(s);
-            }
-            CardElement::InputText { separator, .. } => {
-                *separator = Some(s);
-            }
-            CardElement::InputToggle { separator, .. } => {
+            Self::TextBlock { separator, .. }
+            | Self::FactSet { separator, .. }
+            | Self::ColumnSet { separator, .. }
+            | Self::Image { separator, .. }
+            | Self::InputChoiceSet { separator, .. }
+            | Self::InputText { separator, .. }
+            | Self::InputToggle { separator, .. } => {
                 *separator = Some(s);
             }
             _ => {
-                log::warn!("Card does not have separator field")
+                log::warn!("Card does not have separator field");
             }
         }
         self.into()
@@ -762,17 +775,13 @@ impl CardElement {
     /// Set Placeholder
     pub fn set_placeholder(&mut self, s: Option<String>) -> Self {
         match self {
-            CardElement::InputText { placeholder, .. } => {
-                *placeholder = s;
-            }
-            CardElement::InputNumber { placeholder, .. } => {
-                *placeholder = s;
-            }
-            CardElement::InputDate { placeholder, .. } => {
+            CardElement::InputText { placeholder, .. }
+            | CardElement::InputNumber { placeholder, .. }
+            | CardElement::InputDate { placeholder, .. } => {
                 *placeholder = s;
             }
             _ => {
-                log::warn!("Card does not have placeholder field")
+                log::warn!("Card does not have placeholder field");
             }
         }
         self.into()
@@ -781,26 +790,16 @@ impl CardElement {
     /// Set Spacing
     pub fn set_spacing(&mut self, s: Spacing) -> Self {
         match self {
-            CardElement::TextBlock { spacing, .. } => {
-                *spacing = Some(s);
-            }
-            CardElement::FactSet { spacing, .. } => {
-                *spacing = Some(s);
-            }
-            CardElement::ColumnSet { spacing, .. } => {
-                *spacing = Some(s);
-            }
-            CardElement::Image { spacing, .. } => {
-                *spacing = Some(s);
-            }
-            CardElement::InputChoiceSet { spacing, .. } => {
-                *spacing = Some(s);
-            }
-            CardElement::InputText { spacing, .. } => {
+            Self::TextBlock { spacing, .. }
+            | Self::FactSet { spacing, .. }
+            | Self::ColumnSet { spacing, .. }
+            | Self::Image { spacing, .. }
+            | Self::InputChoiceSet { spacing, .. }
+            | Self::InputText { spacing, .. } => {
                 *spacing = Some(s);
             }
             _ => {
-                log::warn!("Card does not have spacing field")
+                log::warn!("Card does not have spacing field");
             }
         }
         self.into()
@@ -808,8 +807,8 @@ impl CardElement {
 
     /// Create actionSet
     #[must_use]
-    pub fn action_set() -> CardElement {
-        CardElement::ActionSet {
+    pub const fn action_set() -> Self {
+        Self::ActionSet {
             actions: vec![],
             height: None,
         }
@@ -817,7 +816,7 @@ impl CardElement {
 
     /// Add action to actionSet
     pub fn add_action_to_set(&mut self, action: Action) -> Self {
-        if let CardElement::ActionSet { actions, .. } = self {
+        if let Self::ActionSet { actions, .. } = self {
             actions.push(action);
         }
         self.into()
@@ -855,14 +854,16 @@ pub struct Column {
     id: Option<String>,
 }
 
-impl From<&Column> for Column {
-    fn from(item: &Column) -> Self {
+impl From<&Self> for Column {
+    #[must_use]
+    fn from(item: &Self) -> Self {
         item.clone()
     }
 }
 
-impl From<&mut Column> for Column {
-    fn from(item: &mut Column) -> Self {
+impl From<&mut Self> for Column {
+    #[must_use]
+    fn from(item: &mut Self) -> Self {
         item.clone()
     }
 }
@@ -870,8 +871,8 @@ impl From<&mut Column> for Column {
 impl Column {
     /// Creates new Column
     #[must_use]
-    pub fn new() -> Self {
-        Column {
+    pub const fn new() -> Self {
+        Self {
             items: vec![],
             select_action: None,
             style: None,
