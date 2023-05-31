@@ -44,8 +44,8 @@ pub use types::*;
 use error::{Error, ErrorKind, ResultExt};
 
 use crate::adaptive_card::AdaptiveCard;
-use futures::{future::try_join_all, try_join};
 use crate::types::Attachment;
+use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;

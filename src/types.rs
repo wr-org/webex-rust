@@ -2,11 +2,11 @@
 //! Basic types for Webex Teams APIs
 
 use crate::{adaptive_card::AdaptiveCard, error, error::ResultExt};
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use uuid::Uuid;
-use base64::Engine;
 
 pub(crate) use api::{Gettable, ListResult};
 
