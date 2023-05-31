@@ -45,6 +45,7 @@ use error::{Error, ErrorKind, ResultExt};
 
 use crate::adaptive_card::AdaptiveCard;
 use futures::{future::try_join_all, try_join};
+use crate::types::Attachment;
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
@@ -135,7 +136,7 @@ impl WebexEventStream {
                             }
                             // `None` messages still reset the timeout (e.g. Ping to keep alive)
                         }
-                        Err(tungstenite::error::Error::Protocol(e)) => {
+                        Err(tokio_tungstenite::tungstenite::Error::Protocol(e)) => {
                             // Protocol error probably requires a connection reset
                             self.is_open = false;
                             return Err(e.to_string().into());

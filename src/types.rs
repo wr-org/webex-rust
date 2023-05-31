@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use uuid::Uuid;
+use base64::Engine;
 
 pub(crate) use api::{Gettable, ListResult};
 
@@ -744,7 +745,7 @@ impl GlobalId {
         if type_ == GlobalIdType::Unknown {
             return Err("Cannot get globalId for unknown ID type".into());
         }
-        if let Ok(decoded_id) = base64::decode(&id) {
+        if let Ok(decoded_id) = base64::engine::general_purpose::STANDARD.decode(&id) {
             let decoded_id = std::str::from_utf8(&decoded_id)
                 .chain_err(|| "Failed to turn base64 id into UTF8 string")?;
             Self::check_id(decoded_id, cluster, &type_.to_string())?;
@@ -763,7 +764,7 @@ impl GlobalId {
         cluster: Option<&str>,
     ) -> Self {
         let id = if Uuid::parse_str(&id).is_ok() {
-            base64::encode(format!(
+            base64::engine::general_purpose::STANDARD.encode(format!(
                 "ciscospark://{}/{}/{}",
                 cluster.unwrap_or("us"),
                 type_,
@@ -931,7 +932,7 @@ pub struct AttachmentAction {
     pub message_id: Option<String>,
     /// The action's inputs.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub inputs: Option<HashMap<String, String>>,
+    pub inputs: Option<HashMap<String, serde_json::Value>>,
     /// The ID of the person who performed the action.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,

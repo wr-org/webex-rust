@@ -726,7 +726,9 @@ impl CardElement {
                 title: title.into(),
                 value: value.into(),
             }),
-            _ => {}
+            _ => {
+                log::warn!("Card does not have key value type field")
+            }
         }
         self.into()
     }
@@ -763,7 +765,28 @@ impl CardElement {
             | Self::InputToggle { separator, .. } => {
                 *separator = Some(s);
             }
-            _ => {}
+            _ => {
+                log::warn!("Card does not have separator field")
+            }
+        }
+        self.into()
+    }
+
+    /// Set Placeholder
+    pub fn set_placeholder(&mut self, s: Option<String>) -> Self {
+        match self {
+            CardElement::InputText { placeholder, .. } => {
+                *placeholder = s;
+            }
+            CardElement::InputNumber { placeholder, .. } => {
+                *placeholder = s;
+            }
+            CardElement::InputDate { placeholder, .. } => {
+                *placeholder = s;
+            }
+            _ => {
+                log::warn!("Card does not have placeholder field")
+            }
         }
         self.into()
     }
@@ -779,7 +802,9 @@ impl CardElement {
             | Self::InputText { spacing, .. } => {
                 *spacing = Some(s);
             }
-            _ => {}
+            _ => {
+                log::warn!("Card does not have spacing field")
+            }
         }
         self.into()
     }

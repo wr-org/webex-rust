@@ -67,8 +67,10 @@ async fn handle_adaptive_card(webex: &webex::Webex, event: &webex::Event) {
             actions
         ),
         Some(s) => match s.as_str() {
-            "init" => handle_adaptive_card_init(webex, &actions).await,
-            id => println!("AdaptiveCard id {id} not handled!"),
+            // s is serde::Value so we have to check if it's actually a string (as_str produces an
+            // Option)
+            Some("init") => handle_adaptive_card_init(webex, &actions).await,
+            id => println!("AdaptiveCard id {id:?} not handled!"),
         },
     }
 }
