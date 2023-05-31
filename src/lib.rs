@@ -377,7 +377,7 @@ impl Webex {
 
     /// Get list of organizations
     #[deprecated(
-        since = "0.9.0",
+        since = "0.5.2",
         note = "Please use `webex::list::<Organization>()` instead"
     )]
     pub async fn get_orgs(&self) -> Result<Vec<Organization>, Error> {
@@ -387,7 +387,7 @@ impl Webex {
     /// Retrieves the attachment for the given ID.  This can be used to
     /// retrieve data from an `AdaptiveCard` submission
     #[deprecated(
-        since = "0.9.0",
+        since = "0.5.2",
         note = "Please use `webex::get::<AttachmentAction>(id)` instead"
     )]
     pub async fn get_attachment_action(&self, id: &GlobalId) -> Result<AttachmentAction, Error> {
@@ -396,7 +396,7 @@ impl Webex {
 
     /// Get a message by ID
     #[deprecated(
-        since = "0.9.0",
+        since = "0.5.2",
         note = "Please use `webex::get::<Message>(id)` instead"
     )]
     pub async fn get_message(&self, id: &GlobalId) -> Result<Message, Error> {
@@ -405,7 +405,7 @@ impl Webex {
 
     /// Delete a message by ID
     #[deprecated(
-        since = "0.9.0",
+        since = "0.5.2",
         note = "Please use `webex::delete::<Message>(id)` instead"
     )]
     pub async fn delete_message(&self, id: &GlobalId) -> Result<(), Error> {
@@ -413,7 +413,7 @@ impl Webex {
     }
 
     /// Get available rooms
-    #[deprecated(since = "0.9.0", note = "Please use `webex::list::<Room>()` instead")]
+    #[deprecated(since = "0.5.2", note = "Please use `webex::list::<Room>()` instead")]
     pub async fn get_rooms(&self) -> Result<Vec<Room>, Error> {
         self.list().await
     }
@@ -439,14 +439,14 @@ impl Webex {
     }
 
     /// Get available room
-    #[deprecated(since = "0.9.0", note = "Please use `webex::get::<Room>(id)` instead")]
+    #[deprecated(since = "0.5.2", note = "Please use `webex::get::<Room>(id)` instead")]
     pub async fn get_room(&self, id: &GlobalId) -> Result<Room, Error> {
         self.get(id).await
     }
 
     /// Get information about person
     #[deprecated(
-        since = "0.9.0",
+        since = "0.5.2",
         note = "Please use `webex::get::<Person>(id)` instead"
     )]
     pub async fn get_person(&self, id: &GlobalId) -> Result<Person, Error> {

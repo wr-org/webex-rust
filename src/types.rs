@@ -137,6 +137,18 @@ pub struct Catalog {
     pub webex_appapi_service: String,
 }
 
+/// Destination for a `MessageOut`
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum Destination {
+    /// Post a message in this room
+    RoomId(String),
+    /// Post a message to a person, using their user ID
+    ToPersonId(String),
+    /// Post a message to a person, using their email
+    ToPersonEmail(String),
+}
+
 /// Outgoing message
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -153,6 +165,10 @@ pub struct MessageOut {
     /// The email address of the recipient when sending a private 1:1 message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
+    // TODO - should we use globalIDs? We should check this field before the message is sent
+    // rolls up room_id, to_person_id, and to_person_email all in one field :)
+    //#[serde(flatten)]
+    //pub deliver_to: Option<Destination>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text. The maximum message length is 7439 bytes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
