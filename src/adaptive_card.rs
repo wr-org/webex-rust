@@ -727,7 +727,7 @@ impl CardElement {
                 value: value.into(),
             }),
             _ => {
-                log::warn!("Card does not have key value type field")
+                log::warn!("Card does not have key value type field");
             }
         }
         self.into()
@@ -766,7 +766,7 @@ impl CardElement {
                 *separator = Some(s);
             }
             _ => {
-                log::warn!("Card does not have separator field")
+                log::warn!("Card does not have separator field");
             }
         }
         self.into()
@@ -775,17 +775,13 @@ impl CardElement {
     /// Set Placeholder
     pub fn set_placeholder(&mut self, s: Option<String>) -> Self {
         match self {
-            CardElement::InputText { placeholder, .. } => {
-                *placeholder = s;
-            }
-            CardElement::InputNumber { placeholder, .. } => {
-                *placeholder = s;
-            }
+            CardElement::InputText { placeholder, .. } |
+            CardElement::InputNumber { placeholder, .. } |
             CardElement::InputDate { placeholder, .. } => {
                 *placeholder = s;
             }
             _ => {
-                log::warn!("Card does not have placeholder field")
+                log::warn!("Card does not have placeholder field");
             }
         }
         self.into()
@@ -803,7 +799,7 @@ impl CardElement {
                 *spacing = Some(s);
             }
             _ => {
-                log::warn!("Card does not have spacing field")
+                log::warn!("Card does not have spacing field");
             }
         }
         self.into()
