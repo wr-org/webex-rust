@@ -38,5 +38,7 @@ error_chain! {
             description("The Webex API has changed, breaking the library's assumptions. This should be resolved in the next library update.")
             display("API changed: {}", s)
         }
+
+        Authentication
     }
 }
