@@ -1,4 +1,4 @@
-#![deny(missing_docs)]
+//#![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
 // clippy::use_self fixed in https://github.com/rust-lang/rust-clippy/pull/9454
 // TODO: remove this when clippy bug fixed in stable
@@ -40,6 +40,7 @@ pub mod adaptive_card;
 pub mod error;
 pub mod types;
 pub use types::*;
+pub mod auth;
 
 use error::{Error, ErrorKind, ResultExt};
 
@@ -223,14 +224,26 @@ impl WebexEventStream {
     }
 }
 
+/// Implements low level REST requests to be used internally by the library
 #[derive(Clone)]
 struct RestClient {
     host_prefix: HashMap<String, String>,
     web_client: WebClient,
-    bearer_token: String,
+    bearer_token: Option<String>,
 }
 
 impl RestClient {
+    /// Creates a new RestClient
+    pub fn new() -> RestClient {
+        let https = HttpsConnector::new();
+        let web_client = Client::builder().build::<_, hyper::Body>(https);
+        RestClient {
+            host_prefix: HashMap::new(),
+            web_client: web_client,
+            bearer_token: None,
+        }
+    }
+
     /******************************************************************
      * Low-level API.  These calls are chained to build various
      * high-level calls like "get_message"
@@ -287,16 +300,25 @@ impl RestClient {
             .get(rest_method_trimmed)
             .unwrap_or(&default_prefix);
         let url = format!("{prefix}/{rest_method}");
+        println!("{url}");
         debug!("Calling {} {:?}", http_method, url);
-        let mut builder = Request::builder()
-            .method(http_method)
-            .uri(url)
-            .header("Authorization", format!("Bearer {}", self.bearer_token));
-        if body.is_some() {
-            builder = builder.header("Content-Type", "application/json");
+        let mut builder = Request::builder().method(http_method).uri(url);
+        if let Some(token) = &self.bearer_token {
+            builder = builder.header("Authorization", format!("Bearer {}", token));
         }
+        if body.is_some() {
+            //builder = builder.header("Content-Type", "application/json");
+            builder = builder.header(
+                "Content-Type",
+                "application/x-www-form-urlencoded; charset=utf-8",
+            );
+        }
+        // let body = match body {
+        //     Some(obj) => Body::from(serde_json::to_string(&obj)?),
+        //     None => Body::empty(),
+        // };
         let body = match body {
-            Some(obj) => Body::from(serde_json::to_string(&obj)?),
+            Some(s) => Body::from(serde_urlencoded::to_string(s).expect("error encoding")),
             None => Body::empty(),
         };
         let req = builder.body(body).expect("request builder");
@@ -342,10 +364,10 @@ impl Webex {
     pub async fn new(token: &str) -> Self {
         let https = HttpsConnector::new();
         let web_client = Client::builder().build::<_, hyper::Body>(https);
-        let mut client = RestClient {
+        let mut client: RestClient = RestClient {
             host_prefix: HashMap::new(),
             web_client: web_client,
-            bearer_token: token.to_string(),
+            bearer_token: Some(token.to_string()),
         };
 
         let mut hasher = DefaultHasher::new();
@@ -408,7 +430,11 @@ impl Webex {
             match connect_async(url.clone()).await {
                 Ok((mut ws_stream, _response)) => {
                     debug!("Connected to {}", url);
-                    WebexEventStream::auth(&mut ws_stream, &s.client.bearer_token).await?;
+                    WebexEventStream::auth(
+                        &mut ws_stream,
+                        s.client.bearer_token.as_ref().unwrap_or(&"".to_string()),
+                    )
+                    .await?;
                     debug!("Authenticated");
                     let timeout = Duration::from_secs(20);
                     Ok(WebexEventStream {
