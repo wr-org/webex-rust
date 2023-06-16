@@ -1,4 +1,4 @@
-//#![deny(missing_docs)]
+#![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
 // clippy::use_self fixed in https://github.com/rust-lang/rust-clippy/pull/9454
 // TODO: remove this when clippy bug fixed in stable
@@ -92,7 +92,7 @@ type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 pub struct Webex {
     id: u64,
     client: RestClient,
-    bearer: BearerToken,
+    token: BearerToken,
     /// Webex Device Information used for device registration
     pub device: DeviceData,
 }
@@ -418,7 +418,7 @@ impl Webex {
         let mut webex = Self {
             id,
             client,
-            bearer: token.to_string(),
+            token: token.to_string(),
             device: DeviceData {
                 device_name: Some("rust-client".to_string()),
                 device_type: Some("DESKTOP".to_string()),
@@ -466,7 +466,7 @@ impl Webex {
             match connect_async(url.clone()).await {
                 Ok((mut ws_stream, _response)) => {
                     debug!("Connected to {}", url);
-                    WebexEventStream::auth(&mut ws_stream, &s.bearer).await?;
+                    WebexEventStream::auth(&mut ws_stream, &s.token).await?;
                     debug!("Authenticated");
                     let timeout = Duration::from_secs(20);
                     Ok(WebexEventStream {
@@ -544,7 +544,7 @@ impl Webex {
         let api_url = format!("limited/catalog?format=hostmap&orgId={org_id}");
         let catalogs = self
             .client
-            .api_get::<CatalogReply>(&api_url, Authorization::Bearer(self.bearer.as_str()))
+            .api_get::<CatalogReply>(&api_url, Authorization::Bearer(&self.token))
             .await?;
         let mercury_url = catalogs.service_links.wdm;
 
@@ -606,10 +606,8 @@ impl Webex {
         let futures: Vec<_> = team_endpoints
             .iter()
             .map(|endpoint| {
-                self.client.api_get::<ListResult<Room>>(
-                    endpoint,
-                    Authorization::Bearer(self.bearer.as_str()),
-                )
+                self.client
+                    .api_get::<ListResult<Room>>(endpoint, Authorization::Bearer(&self.token))
             })
             .collect();
         let teams_rooms = try_join_all(futures).await?;
@@ -656,7 +654,7 @@ impl Webex {
                     media_type: "application/json",
                     content: serde_json::to_string(&message)?,
                 },
-                Authorization::Bearer(self.bearer.as_str()),
+                Authorization::Bearer(&self.token),
             )
             .await
     }
@@ -672,10 +670,7 @@ impl Webex {
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
-            .api_get::<T>(
-                rest_method.as_str(),
-                Authorization::Bearer(self.bearer.as_str()),
-            )
+            .api_get::<T>(rest_method.as_str(), Authorization::Bearer(&self.token))
             .await
             .chain_err(|| {
                 format!(
@@ -690,10 +685,7 @@ impl Webex {
     pub async fn delete<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<(), Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
-            .api_delete(
-                rest_method.as_str(),
-                Authorization::Bearer(self.bearer.as_str()),
-            )
+            .api_delete(rest_method.as_str(), Authorization::Bearer(&self.token))
             .await
             .chain_err(|| {
                 format!(
@@ -707,7 +699,7 @@ impl Webex {
     /// List resources of a type
     pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
         self.client
-            .api_get::<ListResult<T>>(T::API_ENDPOINT, Authorization::Bearer(self.bearer.as_str()))
+            .api_get::<ListResult<T>>(T::API_ENDPOINT, Authorization::Bearer(&self.token))
             .await
             .map(|result| result.items)
             .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
@@ -717,7 +709,7 @@ impl Webex {
         // https://developer.webex.com/docs/api/v1/devices
         match self
             .client
-            .api_get::<DevicesReply>("devices", Authorization::Bearer(self.bearer.as_str()))
+            .api_get::<DevicesReply>("devices", Authorization::Bearer(&self.token))
             .await
         {
             #[rustfmt::skip]
@@ -749,7 +741,7 @@ impl Webex {
                     media_type: "application/json",
                     content: serde_json::to_string(&self.device)?,
                 },
-                Authorization::Bearer(self.bearer.as_str()),
+                Authorization::Bearer(&self.token),
             )
             .await
     }

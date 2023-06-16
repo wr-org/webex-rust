@@ -1,3 +1,6 @@
+#![deny(missing_docs)]
+//! Different authenticators
+
 use crate::{Authorization, RequestBody, RestClient};
 use hyper::StatusCode;
 use serde::Deserialize;

@@ -27,10 +27,7 @@ async fn main() {
 
     let w = Webex::new(&token).await;
 
-    let rooms = w
-        .get_all_rooms()
-        .await
-        .expect("obtnaing person information");
+    let rooms = w.get_all_rooms().await.expect("obtaning rooms");
 
     println!("{rooms:#?}");
 }
