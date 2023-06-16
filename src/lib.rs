@@ -257,7 +257,7 @@ impl RestClient {
         let web_client = Client::builder().build::<_, hyper::Body>(https);
         RestClient {
             host_prefix: HashMap::new(),
-            web_client: web_client,
+            web_client,
         }
     }
 
@@ -402,7 +402,7 @@ impl Webex {
         let web_client = Client::builder().build::<_, hyper::Body>(https);
         let mut client: RestClient = RestClient {
             host_prefix: HashMap::new(),
-            web_client: web_client,
+            web_client,
         };
 
         let mut hasher = DefaultHasher::new();

@@ -11,8 +11,9 @@ const GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 
 #[allow(dead_code)]
 /// Authenticates a device based on a Webex Integration
-/// "client id" and a "client secret". More information
-/// can be found on <https://developer.webex.com/docs/login-with-webex#device-grant-flow>
+/// "client id" and a "client secret".
+///
+/// More information can be found on <https://developer.webex.com/docs/login-with-webex#device-grant-flow>.
 pub struct DeviceAuthenticator {
     client_id: String,
     client_secret: String,
@@ -46,24 +47,26 @@ struct TokenResponse {
 pub type Bearer = String;
 
 impl DeviceAuthenticator {
-    /// Creates a new [DeviceAuthenticator] using the "client ID" and
-    /// "client secret" provided by a Webex Integration. For more details:
-    /// <https://developer.webex.com/docs/integrations>.
+    /// Creates a new [`DeviceAuthenticator`] using the "client ID" and
+    /// "client secret" provided by a Webex Integration.
+    ///
+    /// For more details: <https://developer.webex.com/docs/integrations>.
+    #[must_use]
     pub fn new(id: &str, secret: &str) -> DeviceAuthenticator {
         let client = RestClient::new();
         DeviceAuthenticator {
             client_id: id.to_string(),
             client_secret: secret.to_string(),
-            client: client,
+            client,
         }
     }
 
-    /// First step of device authentication. Returns a [VerificationToken]
+    /// First step of device authentication. Returns a [`VerificationToken`]
     /// containing the codes and URLs that can be entered and navigated to
     /// on a different device.
     pub async fn verify(&self) -> Result<VerificationToken, crate::Error> {
         let params = &[("client_id", self.client_id.as_str()), ("scope", SCOPE)];
-        Ok(self
+        let verification_token = self
             .client
             .api_post::<VerificationToken, _>(
                 "device/authorize",
@@ -73,12 +76,13 @@ impl DeviceAuthenticator {
                 },
                 Authorization::None,
             )
-            .await?)
+            .await?;
+        Ok(verification_token)
     }
 
-    /// Second and final step of device authentication. Receives a [VerificationToken]
-    /// provided by [DeviceAuthenticator::verify] and blocks until the user enters their crendentials using
-    /// the provided codes/links from [VerificationToken]. Returns a [Bearer] if successful.
+    /// Second and final step of device authentication. Receives a [`VerificationToken`]
+    /// provided by [`verify`](DeviceAuthenticator::verify) and blocks until the user enters their crendentials using
+    /// the provided codes/links from [`VerificationToken`]. Returns a [`Bearer`] if successful.
     pub async fn wait_for_authentication(
         &self,
         verification_token: &VerificationToken,
@@ -116,10 +120,12 @@ impl DeviceAuthenticator {
                 Err(e) => match e.kind() {
                     crate::error::ErrorKind::StatusText(http_status, _) => {
                         if *http_status != StatusCode::PRECONDITION_REQUIRED {
-                            panic!("unexpected HTTP status {}", *http_status);
+                            return Err(crate::ErrorKind::Authentication.into());
                         }
                     }
-                    _ => panic!("{}", e),
+                    _ => {
+                        return Err(crate::ErrorKind::Authentication.into());
+                    }
                 },
             }
         }
