@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-//! Different authenticators
+//! Ways to authenticate with the Webex API
 
 use crate::{Authorization, RequestBody, RestClient};
 use hyper::StatusCode;
@@ -12,7 +12,7 @@ const GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 #[allow(dead_code)]
 /// Authenticates a device based on a Webex Integration
 /// "client id" and a "client secret". More information
-/// can be found on https://developer.webex.com/docs/login-with-webex#device-grant-flow
+/// can be found on <https://developer.webex.com/docs/login-with-webex#device-grant-flow>
 pub struct DeviceAuthenticator {
     client_id: String,
     client_secret: String,
@@ -24,9 +24,15 @@ pub struct DeviceAuthenticator {
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 pub struct VerificationToken {
+    /// Unique user verification code.
     pub user_code: String,
     device_code: String,
+    /// A verification URL the user can navigate
+    /// to on a different device and provide the unique
+    /// user verification code.
     pub verification_uri: String,
+    /// A verification URL containing the embedded
+    /// hashed user verification code.
     pub verification_uri_complete: String,
     interval: u64,
 }
@@ -36,9 +42,13 @@ struct TokenResponse {
     access_token: String,
 }
 
+/// Type alias for the bearer token.
 pub type Bearer = String;
 
 impl DeviceAuthenticator {
+    /// Creates a new [DeviceAuthenticator] using the "client ID" and
+    /// "client secret" provided by a Webex Integration. For more details:
+    /// <https://developer.webex.com/docs/integrations>.
     pub fn new(id: &str, secret: &str) -> DeviceAuthenticator {
         let client = RestClient::new();
         DeviceAuthenticator {
@@ -48,6 +58,9 @@ impl DeviceAuthenticator {
         }
     }
 
+    /// First step of device authentication. Returns a [VerificationToken]
+    /// containing the codes and URLs that can be entered and navigated to
+    /// on a different device.
     pub async fn verify(&self) -> Result<VerificationToken, crate::Error> {
         let params = &[("client_id", self.client_id.as_str()), ("scope", SCOPE)];
         Ok(self
@@ -63,6 +76,9 @@ impl DeviceAuthenticator {
             .await?)
     }
 
+    /// Second and final step of device authentication. Receives a [VerificationToken]
+    /// provided by [DeviceAuthenticator::verify] and blocks until the user enters their crendentials using
+    /// the provided codes/links from [VerificationToken]. Returns a [Bearer] if successful.
     pub async fn wait_for_authentication(
         &self,
         verification_token: &VerificationToken,
