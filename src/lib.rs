@@ -92,7 +92,7 @@ type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 pub struct Webex {
     id: u64,
     client: RestClient,
-    token: BearerToken,
+    token: String,
     /// Webex Device Information used for device registration
     pub device: DeviceData,
 }
@@ -234,7 +234,7 @@ enum Authorization<'a> {
         password: &'a str,
     },
 }
-type BearerToken = String;
+
 /// Implements low level REST requests to be used internally by the library
 #[derive(Clone)]
 struct RestClient {
