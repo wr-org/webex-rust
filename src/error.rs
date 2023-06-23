@@ -5,6 +5,7 @@ error_chain! {
     foreign_links {
         Io(std::io::Error);
         Json(SerdeError);
+        FormEncoding(serde_urlencoded::ser::Error);
         UTF8(std::str::Utf8Error);
         Hyper(HyperError);
     }
@@ -38,5 +39,7 @@ error_chain! {
             description("The Webex API has changed, breaking the library's assumptions. This should be resolved in the next library update.")
             display("API changed: {}", s)
         }
+
+        Authentication
     }
 }
