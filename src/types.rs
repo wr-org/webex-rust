@@ -306,7 +306,7 @@ pub struct DeviceData {
     pub client_messaging_giphy: Option<String>,
     pub client_messaging_link_preview: Option<String>,
     pub ecm_enabled_for_all_users: Option<bool>,
-    pub ecm_supported_storage_providers: Vec<String>,
+    pub ecm_supported_storage_providers: Option<Vec<String>>,
     pub default_ecm_microsoft_cloud: Option<String>,
     pub ecm_microsoft_tenant: Option<String>,
     pub ecm_screen_capture_feature_allowed: Option<bool>,
