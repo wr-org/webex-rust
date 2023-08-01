@@ -632,6 +632,22 @@ impl Webex {
         self.get(id).await
     }
 
+    /// Get the Person for the current user
+    /// # Errors
+    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// value cannot be deserialised. (If this happens, this is a library bug and should be
+    /// reported.)
+    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
+    pub async fn me(&self) -> Result<Person, Error> {
+        let rest_method = "people/me".to_string();
+        self.client
+            .api_get::<Person>(rest_method.as_str(), Authorization::Bearer(&self.token))
+            .await
+            .chain_err(|| "Failed to get own details")
+    }
+
     /// Send a message to a user or room
     ///
     /// # Arguments
