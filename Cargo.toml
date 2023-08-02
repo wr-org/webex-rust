@@ -1,7 +1,11 @@
 [package]
 name = "webex"
-version = "0.7.0"
-authors = ["Scott Hutton <shutton@pobox.com>", "Milan Stastny <milan@stastnej.ch>", "Abel Shields <abel@uucp.org.uk>"]
+version = "0.8.0"
+authors = [
+    "Scott Hutton <shutton@pobox.com>",
+    "Milan Stastny <milan@stastnej.ch>",
+    "Abel Shields <abel@uucp.org.uk>",
+]
 edition = "2018"
 description = "Interface to Webex Teams REST and WebSocket APIs"
 keywords = ["webex", "spark"]
