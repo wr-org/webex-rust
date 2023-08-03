@@ -6,7 +6,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::option_if_let_else)]
 #![cfg_attr(test, deny(warnings))]
-#![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
+#![doc(html_root_url = "https://docs.rs/webex/latest/webex/")]
 
 //! # webex-rust
 //!
@@ -52,7 +52,7 @@ use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
 use log::{debug, trace, warn};
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     hash::{self, Hasher},
@@ -703,6 +703,119 @@ impl Webex {
             .await
             .map(|result| result.items)
             .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
+    }
+
+    /// List resources of a type, with parameters
+    pub async fn list_with_params<T: Gettable + DeserializeOwned>(&self, list_params: T::ListParams<'_>) -> Result<Vec<T>, Error> {
+        let rest_method = format!("{}?{}", T::API_ENDPOINT, serde_html_form::to_string(list_params)?);
+        self.api_get::<ListResult<T>>(&rest_method)
+            .await
+            .map(|result| result.items)
+            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
+    }
+
+    /******************************************************************
+     * Low-level API.  These calls are chained to build various
+     * high-level calls like "get_message"
+     ******************************************************************/
+
+    async fn api_get<T: DeserializeOwned>(&self, rest_method: &str) -> Result<T, Error> {
+        let body: Option<String> = None;
+        self.rest_api("GET", rest_method, body).await
+    }
+
+    async fn api_delete(&self, rest_method: &str) -> Result<(), Error> {
+        let body: Option<String> = None;
+        self.rest_api("DELETE", rest_method, body).await
+    }
+
+    async fn api_post<T: DeserializeOwned, U: Serialize + Send>(
+        &self,
+        rest_method: &str,
+        body: U,
+    ) -> Result<T, Error> {
+        self.rest_api("POST", rest_method, Some(body)).await
+    }
+
+    async fn rest_api<T: DeserializeOwned, U: Serialize + Send>(
+        &self,
+        http_method: &str,
+        rest_method: &str,
+        body: Option<U>,
+    ) -> Result<T, Error> {
+        let reply = self
+            .call_web_api_raw(http_method, rest_method, body)
+            .await?;
+        let mut reply_str = reply.as_str();
+        if reply_str.is_empty() {
+            reply_str = "null";
+        }
+        serde_json::from_str(reply_str).map_err(|e| {
+            debug!("Couldn't parse reply for {} call: {}", rest_method, e);
+            debug!("Source JSON: `{}`", reply_str);
+            Error::with_chain(e, "failed to parse reply")
+        })
+    }
+
+    async fn call_web_api_raw<T: Serialize + Send>(
+        &self,
+        http_method: &str,
+        rest_method: &str,
+        body: Option<T>,
+    ) -> Result<String, Error> {
+        let default_prefix = String::from(REST_HOST_PREFIX);
+        let rest_method_trimmed = rest_method.split('?').next().unwrap_or(rest_method);
+        let prefix = self
+            .client
+            .host_prefix
+            .get(rest_method_trimmed)
+            .unwrap_or(&default_prefix);
+        let url = format!("{prefix}/{rest_method}");
+        debug!("Calling {} {:?}", http_method, url);
+        let mut builder = Request::builder()
+            .method(http_method)
+            .uri(url)
+            .header("Authorization", &self.token);
+        if body.is_some() {
+            builder = builder.header("Content-Type", "application/json");
+        }
+        let body = match body {
+            Some(obj) => Body::from(serde_json::to_string(&obj)?),
+            None => Body::empty(),
+        };
+        let req = builder.body(body).expect("request builder");
+        match self.client.web_client.request(req).await {
+            Ok(mut resp) => {
+                let mut reply = String::new();
+                while let Some(chunk) = resp.body_mut().data().await {
+                    use std::str;
+
+                    let chunk = &chunk?;
+                    let strchunk = str::from_utf8(&chunk)?;
+                    reply.push_str(strchunk);
+                }
+                match resp.status() {
+                    hyper::StatusCode::LOCKED | hyper::StatusCode::TOO_MANY_REQUESTS => {
+                        let retry_after = resp
+                            .headers()
+                            .get("Retry-After")
+                            .and_then(|s| s.to_str().ok())
+                            .and_then(|t| t.parse::<i64>().ok());
+                        warn!(
+                            "Limited calling {} {}/{}",
+                            http_method, prefix, rest_method_trimmed
+                        );
+                        debug!("Retry-After: {:?}", retry_after);
+                        Err(ErrorKind::Limited(resp.status(), retry_after).into())
+                    }
+                    status if !status.is_success() => {
+                        Err(ErrorKind::StatusText(resp.status(), reply).into())
+                    }
+                    _ => Ok(reply),
+                }
+            }
+            Err(e) => Err(Error::with_chain(e, "request failed")),
+        }
     }
 
     async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
