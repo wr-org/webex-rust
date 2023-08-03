@@ -737,10 +737,8 @@ impl Webex {
         let rest_method = format!(
             "{}?{}",
             T::API_ENDPOINT,
-            serde_html_form::to_string(&list_params)?
+            serde_html_form::to_string(list_params)?
         );
-        drop(list_params); // Keep the future Send-safe (apparently list_params can't be held
-                           // across an await)
         self.client
             .api_get::<ListResult<T>>(&rest_method, AuthorizationType::Bearer(&self.token))
             .await
