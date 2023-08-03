@@ -72,7 +72,7 @@ impl DeviceAuthenticator {
                 "device/authorize",
                 RequestBody {
                     media_type: "application/x-www-form-urlencoded; charset=utf-8",
-                    content: serde_urlencoded::to_string(params)?,
+                    content: serde_html_form::to_string(params)?,
                 },
                 AuthorizationType::None,
             )
@@ -107,7 +107,7 @@ impl DeviceAuthenticator {
                     "device/token",
                     RequestBody {
                         media_type: "application/x-www-form-urlencoded; charset=utf-8",
-                        content: serde_urlencoded::to_string(params)?,
+                        content: serde_html_form::to_string(params)?,
                     },
                     AuthorizationType::Basic {
                         username: &self.client_id,
