@@ -1,6 +1,6 @@
 use hyper::{Error as HyperError, StatusCode};
-use serde_json::error::Error as SerdeError;
 use serde_html_form::ser::Error as SerdeHtmlError;
+use serde_json::error::Error as SerdeError;
 
 error_chain! {
     foreign_links {
