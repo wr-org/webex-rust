@@ -6,7 +6,7 @@ error_chain! {
     foreign_links {
         Io(std::io::Error);
         Json(SerdeError);
-        HtmlEncoding(SerdeHtmlError);
+        FormEncoding(SerdeHtmlError);
         UTF8(std::str::Utf8Error);
         Hyper(HyperError);
     }
