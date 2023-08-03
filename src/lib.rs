@@ -1,5 +1,10 @@
 #![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
+// clippy::use_self fixed in https://github.com/rust-lang/rust-clippy/pull/9454
+// TODO: remove this when clippy bug fixed in stable
+#![allow(clippy::use_self)]
+// should support this in the future - would be nice if all futures were send
+#![allow(clippy::future_not_send)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::option_if_let_else)]
 #![cfg_attr(test, deny(warnings))]
@@ -732,10 +737,12 @@ impl Webex {
         let rest_method = format!(
             "{}?{}",
             T::API_ENDPOINT,
-            serde_html_form::to_string(list_params)?
+            serde_html_form::to_string(&list_params)?
         );
+        drop(list_params); // Keep the future Send-safe (apparently list_params can't be held
+                           // across an await)
         self.client
-            .api_get::<ListResult<T>>(&rest_method, Authorization::Bearer(&self.token))
+            .api_get::<ListResult<T>>(&rest_method, AuthorizationType::Bearer(&self.token))
             .await
             .map(|result| result.items)
             .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
