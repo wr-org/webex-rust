@@ -459,7 +459,7 @@ impl Webex {
         // new one if needed
         async fn connect_device(s: &Webex, device: DeviceData) -> Result<WebexEventStream, Error> {
             let Some(ws_url) = device.ws_url else {
-                return Err("Device has no ws_url".into())
+                return Err("Device has no ws_url".into());
             };
             let url = url::Url::parse(ws_url.as_str())
                 .map_err(|_| Error::from("Failed to parse ws_url"))?;
