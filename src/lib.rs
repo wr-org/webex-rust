@@ -6,7 +6,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::option_if_let_else)]
 #![cfg_attr(test, deny(warnings))]
-#![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
+#![doc(html_root_url = "https://docs.rs/webex/latest/webex/")]
 
 //! # webex-rust
 //!
@@ -506,6 +506,15 @@ impl Webex {
     /// List resources of a type
     pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
         self.api_get::<ListResult<T>>(T::API_ENDPOINT)
+            .await
+            .map(|result| result.items)
+            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
+    }
+
+    /// List resources of a type, with parameters
+    pub async fn list_with_params<T: Gettable + DeserializeOwned>(&self, list_params: T::ListParams<'_>) -> Result<Vec<T>, Error> {
+        let rest_method = format!("{}?{}", T::API_ENDPOINT, serde_html_form::to_string(list_params)?);
+        self.api_get::<ListResult<T>>(&rest_method)
             .await
             .map(|result| result.items)
             .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))

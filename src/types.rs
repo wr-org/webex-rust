@@ -20,30 +20,51 @@ mod api {
         /// Endpoint to query to perform an HTTP GET request with an id (to get an instance), or
         /// without an id (to list them).
         const API_ENDPOINT: &'static str;
+        type ListParams<'a>: serde::Serialize;
     }
+
+    #[derive(crate::types::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct MessageListParams<'a> {
+        room_id: &'a str,
+        //#[serde(skip_serializing_if = "Option::is_none")] // Should be automatic
+        parent_id: Option<&'a str>,
+        #[serde(skip_serializing_if = "<[_]>::is_empty")]
+        mentioned_people: &'a [&'a str],
+        // TODO: before: string, beforeMessage: id, max: number
+    }
+
+    #[derive(crate::types::Serialize)]
+    pub enum Infallible {}
 
     impl Gettable for Message {
         const API_ENDPOINT: &'static str = "messages";
+        type ListParams<'a> = MessageListParams<'a>;
     }
 
     impl Gettable for Organization {
         const API_ENDPOINT: &'static str = "organizations";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for AttachmentAction {
         const API_ENDPOINT: &'static str = "attachment/actions";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for Room {
         const API_ENDPOINT: &'static str = "rooms";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for Person {
         const API_ENDPOINT: &'static str = "people";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for Team {
         const API_ENDPOINT: &'static str = "teams";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     #[derive(crate::types::Deserialize)]

@@ -24,6 +24,7 @@ tokio-native-tls = "0.3"
 tungstenite = "0.18.0"
 url = "2.2"
 lazy_static = "1.4.0"
+serde_html_form = "0.2.2"
 
 [dependencies.chrono]
 version = "0.4"
