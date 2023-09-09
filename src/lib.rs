@@ -706,7 +706,6 @@ impl Webex {
     }
 
     async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
-        // https://developer.webex.com/docs/api/v1/devices
         match self
             .client
             .api_get::<DevicesReply>("devices", Authorization::Bearer(&self.token))
