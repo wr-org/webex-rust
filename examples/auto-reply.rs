@@ -1,4 +1,6 @@
 use std::env;
+use log::{self, log_enabled, Level};
+use env_logger;
 
 const BOT_ACCESS_TOKEN: &str = "BOT_ACCESS_TOKEN";
 const BOT_EMAIL: &str = "BOT_EMAIL";
@@ -25,6 +27,7 @@ const BOT_EMAIL: &str = "BOT_EMAIL";
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let token = env::var(BOT_ACCESS_TOKEN)
         .unwrap_or_else(|_| panic!("{} not specified in environment", BOT_ACCESS_TOKEN));
     let bot_email = env::var(BOT_EMAIL)
