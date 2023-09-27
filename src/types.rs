@@ -626,7 +626,7 @@ impl Event {
             "janus.user_sessions" => ActivityType::Janus,
             //"apheleia.subscription_update" ??
             e => {
-                log::error!("Unknown data.event_type `{}`, returning Unknown", e);
+                log::debug!("Unknown data.event_type `{}`, returning Unknown", e);
                 ActivityType::Unknown(e.to_string())
             }
         }
