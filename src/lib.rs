@@ -118,6 +118,7 @@ impl WebexEventStream {
         loop {
             let next = self.ws_stream.next();
 
+            use tokio_tungstenite::tungstenite::Error as TErr;
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
                 Err(_) => {
@@ -136,10 +137,12 @@ impl WebexEventStream {
                             }
                             // `None` messages still reset the timeout (e.g. Ping to keep alive)
                         }
-                        Err(tokio_tungstenite::tungstenite::Error::Protocol(e)) => {
+                        Err(TErr::Protocol(_) | TErr::Io(_)) => {
                             // Protocol error probably requires a connection reset
+                            // IO error is (apart from WouldBlock) generally an error with the
+                            // underlying connection and also fatal
                             self.is_open = false;
-                            return Err(e.to_string().into());
+                            return Err(msg.unwrap_err().to_string().into());
                         }
                         Err(e) => {
                             return Err(ErrorKind::Tungstenite(
