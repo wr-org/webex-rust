@@ -613,8 +613,7 @@ impl Event {
                                 activity_type
                             );
                             ActivityType::Unknown(format!(
-                                "conversation.activity.{}",
-                                activity_type
+                                "conversation.activity.{activity_type}"
                             ))
                         }
                     }

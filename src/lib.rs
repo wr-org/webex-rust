@@ -1,8 +1,5 @@
 #![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
-// clippy::use_self fixed in https://github.com/rust-lang/rust-clippy/pull/9454
-// TODO: remove this when clippy bug fixed in stable
-#![allow(clippy::use_self)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::option_if_let_else)]
 #![cfg_attr(test, deny(warnings))]
@@ -254,11 +251,11 @@ where
 }
 
 impl RestClient {
-    /// Creates a new RestClient
-    pub fn new() -> RestClient {
+    /// Creates a new `RestClient`
+    pub fn new() -> Self {
         let https = HttpsConnector::new();
         let web_client = Client::builder().build::<_, hyper::Body>(https);
-        RestClient {
+        Self {
             host_prefix: HashMap::new(),
             web_client,
         }

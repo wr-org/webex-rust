@@ -52,9 +52,9 @@ impl DeviceAuthenticator {
     ///
     /// For more details: <https://developer.webex.com/docs/integrations>.
     #[must_use]
-    pub fn new(id: &str, secret: &str) -> DeviceAuthenticator {
+    pub fn new(id: &str, secret: &str) -> Self {
         let client = RestClient::new();
-        DeviceAuthenticator {
+        Self {
             client_id: id.to_string(),
             client_secret: secret.to_string(),
             client,
