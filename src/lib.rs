@@ -127,6 +127,7 @@ impl WebexEventStream {
                 }
                 // Didn't time out
                 Ok(next_result) => match next_result {
+                    None => continue,
                     Some(msg) => match msg {
                         Ok(msg) => {
                             if let Some(h_msg) = self.handle_message(msg)? {
@@ -149,7 +150,6 @@ impl WebexEventStream {
                             .into())
                         }
                     },
-                    None => continue,
                 },
             }
         }
