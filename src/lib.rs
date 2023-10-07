@@ -1,8 +1,5 @@
 #![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
-// clippy::use_self fixed in https://github.com/rust-lang/rust-clippy/pull/9454
-// TODO: remove this when clippy bug fixed in stable
-#![allow(clippy::use_self)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::option_if_let_else)]
 #![cfg_attr(test, deny(warnings))]
@@ -118,6 +115,7 @@ impl WebexEventStream {
         loop {
             let next = self.ws_stream.next();
 
+            use tokio_tungstenite::tungstenite::Error as TErr;
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
                 Err(_) => {
@@ -129,6 +127,7 @@ impl WebexEventStream {
                 }
                 // Didn't time out
                 Ok(next_result) => match next_result {
+                    None => continue,
                     Some(msg) => match msg {
                         Ok(msg) => {
                             if let Some(h_msg) = self.handle_message(msg)? {
@@ -136,10 +135,12 @@ impl WebexEventStream {
                             }
                             // `None` messages still reset the timeout (e.g. Ping to keep alive)
                         }
-                        Err(tokio_tungstenite::tungstenite::Error::Protocol(e)) => {
+                        Err(TErr::Protocol(_) | TErr::Io(_)) => {
                             // Protocol error probably requires a connection reset
+                            // IO error is (apart from WouldBlock) generally an error with the
+                            // underlying connection and also fatal
                             self.is_open = false;
-                            return Err(e.to_string().into());
+                            return Err(msg.unwrap_err().to_string().into());
                         }
                         Err(e) => {
                             return Err(ErrorKind::Tungstenite(
@@ -149,7 +150,6 @@ impl WebexEventStream {
                             .into())
                         }
                     },
-                    None => continue,
                 },
             }
         }
@@ -251,11 +251,11 @@ where
 }
 
 impl RestClient {
-    /// Creates a new RestClient
-    pub fn new() -> RestClient {
+    /// Creates a new `RestClient`
+    pub fn new() -> Self {
         let https = HttpsConnector::new();
         let web_client = Client::builder().build::<_, hyper::Body>(https);
-        RestClient {
+        Self {
             host_prefix: HashMap::new(),
             web_client,
         }
