@@ -299,18 +299,6 @@ impl fmt::Display for DeviceData {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(missing_docs)]
-pub struct DeviceFeatures {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub developer: Option<Vec<DeviceFeatureData>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub entitlement: Option<Vec<DeviceFeatureData>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<Vec<DeviceFeatureData>>,
-}
-
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Authorization {
@@ -527,9 +515,7 @@ impl Event {
                                 "Unknown activity type `{}`, returning Unknown",
                                 activity_type
                             );
-                            ActivityType::Unknown(format!(
-                                "conversation.activity.{activity_type}"
-                            ))
+                            ActivityType::Unknown(format!("conversation.activity.{activity_type}"))
                         }
                     }
                 }
