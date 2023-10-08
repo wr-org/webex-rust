@@ -4,8 +4,8 @@
 use crate::{adaptive_card::AdaptiveCard, error, error::ResultExt};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::{collections::HashMap, fmt};
 use uuid::Uuid;
 
 pub(crate) use api::{Gettable, ListResult};
@@ -290,6 +290,25 @@ pub struct DeviceData {
     pub name: Option<String>,
     pub system_name: Option<String>,
     pub system_version: Option<String>,
+}
+
+impl fmt::Display for DeviceData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "name: {:?}, device_name: {:?}, device_type: {:?}, model: {:?}, system_name: {:?}, system_version: {:?}, url: {:?}",
+        self.name, self.device_name, self.device_type, self.model, self.system_name, self.system_version, self.url)
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(missing_docs)]
+pub struct DeviceFeatures {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub developer: Option<Vec<DeviceFeatureData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entitlement: Option<Vec<DeviceFeatureData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<Vec<DeviceFeatureData>>,
 }
 
 #[allow(missing_docs)]

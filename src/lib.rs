@@ -79,6 +79,10 @@ const DEFAULT_REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+// Qualify webex devices created by this crate
+const DEFAULT_DEVICE_NAME: &str = "rust-client";
+const DEVICE_SYSTEM_NAME: &str = "rust-spark-client";
+
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
@@ -398,6 +402,12 @@ impl Webex {
     /// Tokens can be obtained when creating a bot, see <https://developer.webex.com/my-apps> for
     /// more information and to create your own Webex bots.
     pub async fn new(token: &str) -> Self {
+        Webex::new_with_device_name(DEFAULT_DEVICE_NAME, token).await
+    }
+
+    /// Constructs a new Webex Teams context from a token and a chosen name
+    /// The name is used to identify the device/client with Webex api
+    pub async fn new_with_device_name(device_name: &str, token: &str) -> Self {
         let https = HttpsConnector::new();
         let web_client = Client::builder().build::<_, hyper::Body>(https);
         let mut client: RestClient = RestClient {
@@ -420,12 +430,12 @@ impl Webex {
             client,
             token: token.to_string(),
             device: DeviceData {
-                device_name: Some("rust-client".to_string()),
+                device_name: Some(DEFAULT_DEVICE_NAME.to_string()),
                 device_type: Some("DESKTOP".to_string()),
                 localized_model: Some("rust".to_string()),
                 model: Some(format!("rust-v{CRATE_VERSION}")),
-                name: Some("rust-spark-client".to_string()),
-                system_name: Some("rust-spark-client".to_string()),
+                name: Some(device_name.to_owned()),
+                system_name: Some(DEVICE_SYSTEM_NAME.to_string()),
                 system_version: Some(CRATE_VERSION.to_string()),
                 ..DeviceData::default()
             },
@@ -456,6 +466,7 @@ impl Webex {
         // refactored out to make it easier to loop through all devices and also lazily create a
         // new one if needed
         async fn connect_device(s: &Webex, device: DeviceData) -> Result<WebexEventStream, Error> {
+            trace!("Attempting connection with device named {:?}", device.name);
             let ws_url = match device.ws_url {
                 Some(url) => url,
                 None => return Err("Device has no ws_url".into()),
@@ -483,7 +494,15 @@ impl Webex {
         }
 
         // get_devices automatically tries to set up devices if the get fails.
-        let mut devices: Vec<DeviceData> = self.get_devices().await?;
+        // Keep only devices named DEVICE_NAME to avoid conflicts with other clients
+        let mut devices: Vec<DeviceData> = self
+            .get_devices()
+            .await?
+            .iter()
+            .filter(|d| d.name == self.device.name)
+            .inspect(|d| trace!("Kept device: {}", d))
+            .cloned()
+            .collect();
 
         // Sort devices in descending order by modification time, meaning latest created device
         // first.
@@ -495,6 +514,7 @@ impl Webex {
 
         for device in devices {
             if let Ok(event_stream) = connect_device(self, device).await {
+                trace!("Successfully connected to device.");
                 return Ok(event_stream);
             }
         }
@@ -733,6 +753,7 @@ impl Webex {
     }
 
     async fn setup_devices(&self) -> Result<DeviceData, Error> {
+        trace!("Setting up new device: {}", &self.device);
         self.client
             .api_post(
                 "devices",
