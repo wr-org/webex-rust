@@ -775,9 +775,9 @@ impl CardElement {
     /// Set Placeholder
     pub fn set_placeholder(&mut self, s: Option<String>) -> Self {
         match self {
-            CardElement::InputText { placeholder, .. }
-            | CardElement::InputNumber { placeholder, .. }
-            | CardElement::InputDate { placeholder, .. } => {
+            Self::InputText { placeholder, .. }
+            | Self::InputNumber { placeholder, .. }
+            | Self::InputDate { placeholder, .. } => {
                 *placeholder = s;
             }
             _ => {
