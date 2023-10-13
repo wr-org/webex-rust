@@ -4,8 +4,8 @@
 use crate::{adaptive_card::AdaptiveCard, error, error::ResultExt};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::{collections::HashMap, fmt};
 use uuid::Uuid;
 
 pub(crate) use api::{Gettable, ListResult};
@@ -292,6 +292,13 @@ pub struct DeviceData {
     pub system_version: Option<String>,
 }
 
+impl fmt::Display for DeviceData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "name: {:?}, device_name: {:?}, device_type: {:?}, model: {:?}, system_name: {:?}, system_version: {:?}, url: {:?}",
+        self.name, self.device_name, self.device_type, self.model, self.system_name, self.system_version, self.url)
+    }
+}
+
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Authorization {
@@ -508,9 +515,7 @@ impl Event {
                                 "Unknown activity type `{}`, returning Unknown",
                                 activity_type
                             );
-                            ActivityType::Unknown(format!(
-                                "conversation.activity.{activity_type}"
-                            ))
+                            ActivityType::Unknown(format!("conversation.activity.{activity_type}"))
                         }
                     }
                 }
