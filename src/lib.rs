@@ -57,7 +57,9 @@ use std::{
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
-    connect_async, tungstenite::Message as TMessage, MaybeTlsStream, WebSocketStream,
+    connect_async,
+    tungstenite::{Error as TErr, Message as TMessage},
+    MaybeTlsStream, WebSocketStream,
 };
 
 /*
@@ -118,7 +120,6 @@ impl WebexEventStream {
         loop {
             let next = self.ws_stream.next();
 
-            use tokio_tungstenite::tungstenite::Error as TErr;
             match tokio::time::timeout(self.timeout, next).await {
                 // Timed out
                 Err(_) => {
@@ -204,7 +205,7 @@ impl WebexEventStream {
             .send(TMessage::Text(serde_json::to_string(&auth).unwrap()))
             .await
         {
-            Ok(_) => {
+            Ok(()) => {
                 /*
                  * The next thing back should be a pong
                  */
@@ -287,7 +288,7 @@ impl RestClient {
         self.rest_api("DELETE", rest_method, body, auth).await
     }
 
-    async fn api_post<'a, T: DeserializeOwned, U>(
+    async fn api_post<'a, T: DeserializeOwned, U: Send>(
         &self,
         rest_method: &str,
         body: RequestBody<U>,
@@ -299,7 +300,7 @@ impl RestClient {
         self.rest_api("POST", rest_method, Some(body), auth).await
     }
 
-    async fn rest_api<'a, T: DeserializeOwned, U>(
+    async fn rest_api<'a, T: DeserializeOwned, U: Send>(
         &self,
         http_method: &str,
         rest_method: &str,
@@ -323,7 +324,7 @@ impl RestClient {
         })
     }
 
-    async fn call_web_api_raw<'a, T>(
+    async fn call_web_api_raw<'a, T: Send>(
         &self,
         http_method: &str,
         rest_method: &str,
@@ -401,7 +402,7 @@ impl Webex {
     /// Tokens can be obtained when creating a bot, see <https://developer.webex.com/my-apps> for
     /// more information and to create your own Webex bots.
     pub async fn new(token: &str) -> Self {
-        Webex::new_with_device_name(DEFAULT_DEVICE_NAME, token).await
+        Self::new_with_device_name(DEFAULT_DEVICE_NAME, token).await
     }
 
     /// Constructs a new Webex Teams context from a token and a chosen name
@@ -466,9 +467,8 @@ impl Webex {
         // new one if needed
         async fn connect_device(s: &Webex, device: DeviceData) -> Result<WebexEventStream, Error> {
             trace!("Attempting connection with device named {:?}", device.name);
-            let ws_url = match device.ws_url {
-                Some(url) => url,
-                None => return Err("Device has no ws_url".into()),
+            let Some(ws_url) = device.ws_url else {
+                return Err("Device has no ws_url".into());
             };
             let url = url::Url::parse(ws_url.as_str())
                 .map_err(|_| Error::from("Failed to parse ws_url"))?;
@@ -533,7 +533,7 @@ impl Webex {
             .map(|cache| cache.get(&self.id).map(Clone::clone))
         {
             trace!("Found mercury URL in cache!");
-            return result.map_err(|_| None);
+            return result.map_err(|()| None);
         }
 
         let mercury_url = self.get_mercury_url_uncached().await;

@@ -486,6 +486,10 @@ impl Event {
     /// Get the type of resource the event corresponds to.
     /// Also contains details about the event action for some event types.
     /// For more details, check [`ActivityType`].
+    ///
+    /// # Panics
+    ///
+    /// Will panic if conversation activity is not set
     #[must_use]
     pub fn activity_type(&self) -> ActivityType {
         match self.data.event_type.as_str() {
