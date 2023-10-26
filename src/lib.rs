@@ -42,7 +42,6 @@ pub mod auth;
 use error::{Error, ErrorKind, ResultExt};
 
 use crate::adaptive_card::AdaptiveCard;
-use crate::types::Attachment;
 use base64::{engine::general_purpose as bas64enc, Engine as _};
 use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
