@@ -258,7 +258,7 @@ pub(crate) struct EmptyReply {}
 /// API Error
 #[allow(missing_docs)]
 #[derive(Deserialize, Serialize, Debug)]
-pub struct Error {
+pub struct DeviceError {
     pub description: String,
 }
 
@@ -270,7 +270,7 @@ pub(crate) struct DevicesReply {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<Error>>,
+    pub errors: Option<Vec<DeviceError>>,
     #[serde(rename = "trackingId", skip_serializing_if = "Option::is_none")]
     pub tracking_id: Option<String>,
 }
@@ -486,6 +486,10 @@ impl Event {
     /// Get the type of resource the event corresponds to.
     /// Also contains details about the event action for some event types.
     /// For more details, check [`ActivityType`].
+    ///
+    /// # Panics
+    ///
+    /// Will panic if conversation activity is not set
     #[must_use]
     pub fn activity_type(&self) -> ActivityType {
         match self.data.event_type.as_str() {
