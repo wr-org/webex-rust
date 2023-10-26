@@ -229,7 +229,7 @@ impl WebexEventStream {
     }
 }
 
-enum Authorization<'a> {
+enum AuthorizationType<'a> {
     None,
     Bearer(&'a str),
     Basic {
@@ -272,7 +272,7 @@ impl RestClient {
     async fn api_get<'a, T: DeserializeOwned>(
         &self,
         rest_method: &str,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
         let body: Option<RequestBody<String>> = None;
         self.rest_api("GET", rest_method, body, auth).await
@@ -281,7 +281,7 @@ impl RestClient {
     async fn api_delete<'a>(
         &self,
         rest_method: &str,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<(), Error> {
         let body: Option<RequestBody<String>> = None;
         self.rest_api("DELETE", rest_method, body, auth).await
@@ -291,7 +291,7 @@ impl RestClient {
         &self,
         rest_method: &str,
         body: RequestBody<U>,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<T, Error>
     where
         Body: From<U>,
@@ -304,7 +304,7 @@ impl RestClient {
         http_method: &str,
         rest_method: &str,
         body: Option<RequestBody<U>>,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<T, Error>
     where
         Body: From<U>,
@@ -328,7 +328,7 @@ impl RestClient {
         http_method: &str,
         rest_method: &str,
         body: Option<RequestBody<T>>,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<String, Error>
     where
         Body: From<T>,
@@ -342,12 +342,12 @@ impl RestClient {
         let url = format!("{prefix}/{rest_method}");
         debug!("Calling {} {:?}", http_method, url);
         let mut builder = match auth {
-            Authorization::None => Request::builder(),
-            Authorization::Basic { username, password } => {
+            AuthorizationType::None => Request::builder(),
+            AuthorizationType::Basic { username, password } => {
                 let encoded = bas64enc::STANDARD_NO_PAD.encode(format!("{username}:{password}"));
                 Request::builder().header("Authorization", format!("Basic {encoded}"))
             }
-            Authorization::Bearer(token) => {
+            AuthorizationType::Bearer(token) => {
                 Request::builder().header("Authorization", format!("Bearer {token}"))
             }
         }
@@ -563,7 +563,7 @@ impl Webex {
         let api_url = format!("limited/catalog?format=hostmap&orgId={org_id}");
         let catalogs = self
             .client
-            .api_get::<CatalogReply>(&api_url, Authorization::Bearer(&self.token))
+            .api_get::<CatalogReply>(&api_url, AuthorizationType::Bearer(&self.token))
             .await?;
         let mercury_url = catalogs.service_links.wdm;
 
@@ -626,7 +626,7 @@ impl Webex {
             .iter()
             .map(|endpoint| {
                 self.client
-                    .api_get::<ListResult<Room>>(endpoint, Authorization::Bearer(&self.token))
+                    .api_get::<ListResult<Room>>(endpoint, AuthorizationType::Bearer(&self.token))
             })
             .collect();
         let teams_rooms = try_join_all(futures).await?;
@@ -673,7 +673,7 @@ impl Webex {
                     media_type: "application/json",
                     content: serde_json::to_string(&message)?,
                 },
-                Authorization::Bearer(&self.token),
+                AuthorizationType::Bearer(&self.token),
             )
             .await
     }
@@ -689,7 +689,7 @@ impl Webex {
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
-            .api_get::<T>(rest_method.as_str(), Authorization::Bearer(&self.token))
+            .api_get::<T>(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
             .await
             .chain_err(|| {
                 format!(
@@ -704,7 +704,7 @@ impl Webex {
     pub async fn delete<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<(), Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
-            .api_delete(rest_method.as_str(), Authorization::Bearer(&self.token))
+            .api_delete(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
             .await
             .chain_err(|| {
                 format!(
@@ -718,7 +718,7 @@ impl Webex {
     /// List resources of a type
     pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
         self.client
-            .api_get::<ListResult<T>>(T::API_ENDPOINT, Authorization::Bearer(&self.token))
+            .api_get::<ListResult<T>>(T::API_ENDPOINT, AuthorizationType::Bearer(&self.token))
             .await
             .map(|result| result.items)
             .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
@@ -727,7 +727,7 @@ impl Webex {
     async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
         match self
             .client
-            .api_get::<DevicesReply>("devices", Authorization::Bearer(&self.token))
+            .api_get::<DevicesReply>("devices", AuthorizationType::Bearer(&self.token))
             .await
         {
             #[rustfmt::skip]
@@ -760,7 +760,7 @@ impl Webex {
                     media_type: "application/json",
                     content: serde_json::to_string(&self.device)?,
                 },
-                Authorization::Bearer(&self.token),
+                AuthorizationType::Bearer(&self.token),
             )
             .await
     }

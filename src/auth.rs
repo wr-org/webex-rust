@@ -1,7 +1,7 @@
 #![deny(missing_docs)]
 //! Ways to authenticate with the Webex API
 
-use crate::{Authorization, RequestBody, RestClient};
+use crate::{AuthorizationType, RequestBody, RestClient};
 use hyper::StatusCode;
 use serde::Deserialize;
 use tokio::time::{self, Duration, Instant};
@@ -74,7 +74,7 @@ impl DeviceAuthenticator {
                     media_type: "application/x-www-form-urlencoded; charset=utf-8",
                     content: serde_urlencoded::to_string(params)?,
                 },
-                Authorization::None,
+                AuthorizationType::None,
             )
             .await?;
         Ok(verification_token)
@@ -109,7 +109,7 @@ impl DeviceAuthenticator {
                         media_type: "application/x-www-form-urlencoded; charset=utf-8",
                         content: serde_urlencoded::to_string(params)?,
                     },
-                    Authorization::Basic {
+                    AuthorizationType::Basic {
                         username: &self.client_id,
                         password: &self.client_secret,
                     },
