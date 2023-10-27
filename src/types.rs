@@ -59,7 +59,7 @@ pub struct Room {
     /// A unique identifier for the room.
     pub id: String,
     /// A user-friendly name for the room.
-    pub title: String,
+    pub title: Option<String>,
     /// The room type.
     ///
     /// direct - 1:1 room
@@ -86,7 +86,7 @@ pub struct Organization {
     /// Id of the org.
     pub id: String,
     /// Display name of the org
-    pub display_name: String,
+    pub display_name: Option<String>,
     /// Date and time the org was created
     pub created: String,
 }
@@ -97,7 +97,7 @@ pub struct Team {
     /// Id of the team
     pub id: String,
     /// Name of the team
-    pub name: String,
+    pub name: Option<String>,
     /// Date and time the team was created
     pub created: String,
     /// Team description
