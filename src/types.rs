@@ -12,7 +12,7 @@ pub(crate) use api::{Gettable, ListResult};
 
 mod api {
     //! Private crate to hold all types that the user shouldn't have to interact with.
-    use super::{AttachmentAction, Message, Organization, Person, Room, Team};
+    use super::{AttachmentAction, Message, MessageListParams, Organization, Person, Room, Team};
 
     /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
     /// in a private crate so users don't see it.
@@ -21,17 +21,6 @@ mod api {
         /// without an id (to list them).
         const API_ENDPOINT: &'static str;
         type ListParams<'a>: serde::Serialize;
-    }
-
-    #[derive(crate::types::Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct MessageListParams<'a> {
-        room_id: &'a str,
-        //#[serde(skip_serializing_if = "Option::is_none")] // Should be automatic
-        parent_id: Option<&'a str>,
-        #[serde(skip_serializing_if = "<[_]>::is_empty")]
-        mentioned_people: &'a [&'a str],
-        // TODO: before: string, beforeMessage: id, max: number
     }
 
     #[derive(crate::types::Serialize)]
@@ -271,6 +260,43 @@ pub struct Message {
     /// The ID of the "parent" message (the start of the reply chain)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
+}
+
+#[derive(crate::types::Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Parameters for listing messages
+pub struct MessageListParams<'a> {
+    /// List messages in a room, by ID.
+    pub room_id: &'a str,
+    /// List messages with a parent, by ID.
+    pub parent_id: Option<&'a str>,
+    /// List messages with these people mentioned, by ID. Use me as a shorthand for the current API user.
+    /// Only me or the person ID of the current user may be specified. Bots must include this parameter
+    /// to list messages in group rooms (spaces).
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    pub mentioned_people: &'a [&'a str],
+    /// List messages sent before a date and time.
+    pub before: Option<&'a str>,
+    /// List messages sent before a message, by ID.
+    pub before_message: Option<&'a str>,
+    /// Limit the maximum number of messages in the response.
+    /// Default: 50
+    pub max: Option<u32>,
+}
+
+impl<'a> MessageListParams<'a> {
+    /// Creates a new `MessageListParams` with the given room ID.
+    #[allow(clippy::must_use_candidate)]
+    pub const fn new(room_id: &'a str) -> Self {
+        Self {
+            room_id,
+            parent_id: None,
+            mentioned_people: &[],
+            before: None,
+            before_message: None,
+            max: None,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug)]
