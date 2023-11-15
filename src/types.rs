@@ -95,7 +95,7 @@ pub struct Room {
 
 #[derive(crate::types::Serialize)]
 #[serde(rename_all = "lowercase")]
-/// Sorting order for RoomListParams
+/// Sorting order for `RoomListParams`
 pub enum SortRoomsBy {
     /// room id
     Id,
