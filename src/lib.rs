@@ -52,7 +52,7 @@ use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use log::{debug, trace, warn};
+use log::*;
 use serde::de::DeserializeOwned;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -323,8 +323,8 @@ impl RestClient {
             reply_str = "null";
         }
         serde_json::from_str(reply_str).map_err(|e| {
-            debug!("Couldn't parse reply for {} call: {}", rest_method, e);
-            debug!("Source JSON: `{}`", reply_str);
+            error!("Couldn't parse reply for {} call: {:#?}", rest_method, e);
+            trace!("Source JSON: `{}`", reply_str);
             Error::with_chain(e, "failed to parse reply")
         })
     }
