@@ -799,7 +799,7 @@ pub struct Target {
     pub participants: MiscItems,
     pub activities: MiscItems,
     pub tags: Vec<String>,
-    pub global_id: String,
+    pub global_id: Option<String>,
 }
 
 #[allow(missing_docs)]
