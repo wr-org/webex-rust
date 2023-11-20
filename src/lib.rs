@@ -1,9 +1,14 @@
 #![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
+// clippy::use_self fixed in https://github.com/rust-lang/rust-clippy/pull/9454
+// TODO: remove this when clippy bug fixed in stable
+#![allow(clippy::use_self)]
+// should support this in the future - would be nice if all futures were send
+#![allow(clippy::future_not_send)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::option_if_let_else)]
 #![cfg_attr(test, deny(warnings))]
-#![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
+#![doc(html_root_url = "https://docs.rs/webex/latest/webex/")]
 
 //! # webex-rust
 //!
@@ -47,7 +52,7 @@ use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use log::{debug, trace, warn};
+use log::{debug, error, trace, warn};
 use serde::de::DeserializeOwned;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -318,8 +323,8 @@ impl RestClient {
             reply_str = "null";
         }
         serde_json::from_str(reply_str).map_err(|e| {
-            debug!("Couldn't parse reply for {} call: {}", rest_method, e);
-            debug!("Source JSON: `{}`", reply_str);
+            error!("Couldn't parse reply for {} call: {:#?}", rest_method, e);
+            trace!("Source JSON: `{}`", reply_str);
             Error::with_chain(e, "failed to parse reply")
         })
     }
@@ -719,6 +724,23 @@ impl Webex {
     pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
         self.client
             .api_get::<ListResult<T>>(T::API_ENDPOINT, AuthorizationType::Bearer(&self.token))
+            .await
+            .map(|result| result.items)
+            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
+    }
+
+    /// List resources of a type, with parameters
+    pub async fn list_with_params<T: Gettable + DeserializeOwned>(
+        &self,
+        list_params: T::ListParams<'_>,
+    ) -> Result<Vec<T>, Error> {
+        let rest_method = format!(
+            "{}?{}",
+            T::API_ENDPOINT,
+            serde_html_form::to_string(list_params)?
+        );
+        self.client
+            .api_get::<ListResult<T>>(&rest_method, AuthorizationType::Bearer(&self.token))
             .await
             .map(|result| result.items)
             .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))

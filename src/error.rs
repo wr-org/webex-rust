@@ -1,11 +1,12 @@
 use hyper::{Error as HyperError, StatusCode};
+use serde_html_form::ser::Error as SerdeHtmlError;
 use serde_json::error::Error as SerdeError;
 
 error_chain! {
     foreign_links {
         Io(std::io::Error);
         Json(SerdeError);
-        FormEncoding(serde_urlencoded::ser::Error);
+        FormEncoding(SerdeHtmlError);
         UTF8(std::str::Utf8Error);
         Hyper(HyperError);
     }

@@ -4,6 +4,7 @@
 use crate::{adaptive_card::AdaptiveCard, error, error::ResultExt};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 use std::convert::TryFrom;
 use std::{collections::HashMap, fmt};
 use uuid::Uuid;
@@ -12,7 +13,10 @@ pub(crate) use api::{Gettable, ListResult};
 
 mod api {
     //! Private crate to hold all types that the user shouldn't have to interact with.
-    use super::{AttachmentAction, Message, Organization, Person, Room, Team};
+    use super::{
+        AttachmentAction, Message, MessageListParams, Organization, Person, Room, RoomListParams,
+        Team,
+    };
 
     /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
     /// in a private crate so users don't see it.
@@ -20,30 +24,40 @@ mod api {
         /// Endpoint to query to perform an HTTP GET request with an id (to get an instance), or
         /// without an id (to list them).
         const API_ENDPOINT: &'static str;
+        type ListParams<'a>: serde::Serialize;
     }
+
+    #[derive(crate::types::Serialize)]
+    pub enum Infallible {}
 
     impl Gettable for Message {
         const API_ENDPOINT: &'static str = "messages";
+        type ListParams<'a> = MessageListParams<'a>;
     }
 
     impl Gettable for Organization {
         const API_ENDPOINT: &'static str = "organizations";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for AttachmentAction {
         const API_ENDPOINT: &'static str = "attachment/actions";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for Room {
         const API_ENDPOINT: &'static str = "rooms";
+        type ListParams<'a> = RoomListParams<'a>;
     }
 
     impl Gettable for Person {
         const API_ENDPOINT: &'static str = "people";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for Team {
         const API_ENDPOINT: &'static str = "teams";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     #[derive(crate::types::Deserialize)]
@@ -53,6 +67,7 @@ mod api {
 }
 
 /// Webex Teams room information
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Room {
@@ -69,7 +84,6 @@ pub struct Room {
     /// Whether the room is moderated (locked) or not.
     pub is_locked: bool,
     /// The ID for the team with which this room is associated.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
     /// The date and time of the room's last activity.
     pub last_activity: String,
@@ -77,6 +91,41 @@ pub struct Room {
     pub creator_id: String,
     /// The date and time the room was created.
     pub created: String,
+}
+
+#[derive(crate::types::Serialize)]
+#[serde(rename_all = "lowercase")]
+/// Sorting order for `RoomListParams`
+pub enum SortRoomsBy {
+    /// room id
+    Id,
+    /// last activity timestamp
+    LastActivity,
+    /// created timestamp
+    Created,
+}
+
+#[skip_serializing_none]
+#[derive(Default, crate::types::Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Parameters for listing rooms
+pub struct RoomListParams<'a> {
+    /// List rooms in a team, by ID.
+    pub team_id: Option<&'a str>,
+    /// List rooms by type. Cannot be set in combination with orgPublicSpaces.
+    #[serde(rename = "type")]
+    pub room_type: Option<RoomType>,
+    /// Shows the org's public spaces joined and unjoined. When set the result list is sorted by the madePublic timestamp.
+    pub org_public_spaces: Option<bool>,
+    /// Filters rooms, that were made public after this time. See madePublic timestamp
+    pub from: Option<&'a str>,
+    /// Filters rooms, that were made public before this time. See madePublic timestamp
+    pub to: Option<&'a str>,
+    /// Sort results. Cannot be set in combination with orgPublicSpaces.
+    pub sort_by: Option<SortRoomsBy>,
+    /// Limit the maximum number of rooms in the response.
+    /// Default: 100
+    pub max: Option<u32>,
 }
 
 /// Holds details about the organization an account belongs to.
@@ -91,6 +140,7 @@ pub struct Organization {
     pub created: String,
 }
 
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug)]
 /// Holds details about a team that includes the account.
 pub struct Team {
@@ -101,7 +151,6 @@ pub struct Team {
     /// Date and time the team was created
     pub created: String,
     /// Team description
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
@@ -151,36 +200,29 @@ pub enum Destination {
 }
 
 /// Outgoing message
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageOut {
     /// The parent message to reply to.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
     /// The room ID of the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     // TODO - should we use globalIDs? We should check this field before the message is sent
     // rolls up room_id, to_person_id, and to_person_email all in one field :)
     //#[serde(flatten)]
     //pub deliver_to: Option<Destination>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text. The maximum message length is 7439 bytes.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// The message, in Markdown format. The maximum message length is 7439 bytes.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
     /// The public URL to a binary file to be posted into the room. Only one file is allowed per message. Uploaded files are automatically converted into a format that all Webex Teams clients can render. For the supported media types and the behavior of uploads, see the [Message Attachments Guide](https://developer.webex.com/docs/api/basics#message-attachments).
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
     /// Content attachments to attach to the message. Only one card per message is supported.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Attachment>>,
 }
 
@@ -196,60 +238,82 @@ pub enum RoomType {
 }
 
 /// Webex Teams message information
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     /// The unique identifier for the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// The room ID of the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The room type.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_type: Option<RoomType>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// The message, in Markdown format.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
     /// The text content of the message, in HTML format. This read-only property is used by the Webex Teams clients.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
     /// Public URLs for files attached to the message. For the supported media types and the behavior of file uploads, see Message Attachments.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
     /// The person ID of the message author.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The email address of the message author.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_email: Option<String>,
     /// People IDs for anyone mentioned in the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentioned_people: Option<Vec<String>>,
     /// Group names for the groups mentioned in the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentioned_groups: Option<Vec<String>>,
     /// Message content attachments attached to the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Attachment>>,
     /// The date and time the message was created.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
     /// The date and time the message was updated, if it was edited.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
     /// The ID of the "parent" message (the start of the reply chain)
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
+}
+
+#[skip_serializing_none]
+#[derive(crate::types::Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Parameters for listing messages
+pub struct MessageListParams<'a> {
+    /// List messages in a room, by ID.
+    pub room_id: &'a str,
+    /// List messages with a parent, by ID.
+    pub parent_id: Option<&'a str>,
+    /// List messages with these people mentioned, by ID. Use me as a shorthand for the current API user.
+    /// Only me or the person ID of the current user may be specified. Bots must include this parameter
+    /// to list messages in group rooms (spaces).
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    pub mentioned_people: &'a [&'a str],
+    /// List messages sent before a date and time.
+    pub before: Option<&'a str>,
+    /// List messages sent before a message, by ID.
+    pub before_message: Option<&'a str>,
+    /// Limit the maximum number of messages in the response.
+    /// Default: 50
+    pub max: Option<u32>,
+}
+
+impl<'a> MessageListParams<'a> {
+    /// Creates a new `MessageListParams` with the given room ID.
+    #[allow(clippy::must_use_candidate)]
+    pub const fn new(room_id: &'a str) -> Self {
+        Self {
+            room_id,
+            parent_id: None,
+            mentioned_people: &[],
+            before: None,
+            before_message: None,
+            max: None,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -263,15 +327,13 @@ pub struct DeviceError {
 }
 
 #[allow(missing_docs)]
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct DevicesReply {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub devices: Option<Vec<DeviceData>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<DeviceError>>,
-    #[serde(rename = "trackingId", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "trackingId")]
     pub tracking_id: Option<String>,
 }
 
@@ -344,19 +406,18 @@ pub struct Actor {
 }
 
 #[allow(missing_docs)]
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EventData {
     pub event_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<Actor>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub activity: Option<Activity>,
 }
 
 #[allow(missing_docs)]
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Activity {
@@ -367,13 +428,9 @@ pub struct Activity {
     pub verb: String,
     pub actor: Actor,
     pub object: Object,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<Target>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_temp_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption_key_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub vector_counters: Option<VectorCounters>,
 }
 
@@ -746,17 +803,14 @@ pub struct Target {
 }
 
 #[allow(missing_docs)]
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Object {
     pub object_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<MiscItems>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub inputs: Option<String>,
 }
 
@@ -794,6 +848,7 @@ pub enum AlertType {
 
 /// Returned from [`WebexEventStream::next()`][`crate::WebexEventStream::next()`]. Contains information about the received event.
 #[allow(missing_docs)]
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
@@ -805,7 +860,6 @@ pub struct Event {
     /// Timestamp in milliseconds since epoch.
     pub timestamp: i64,
     pub tracking_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub alert_type: Option<AlertType>,
     pub headers: HashMap<String, String>,
     pub sequence_number: i64,
@@ -823,28 +877,24 @@ pub struct Attachment {
 }
 
 /// Attachment action details
+#[skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentAction {
     /// A unique identifier for the action.
     pub id: String,
     /// The type of action performed.
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
     pub action_type: Option<String>,
     /// The parent message the attachment action was performed on.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
     /// The action's inputs.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub inputs: Option<HashMap<String, serde_json::Value>>,
     /// The ID of the person who performed the action.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The ID of the room the action was performed within.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The date and time the action was created.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
 }
 
