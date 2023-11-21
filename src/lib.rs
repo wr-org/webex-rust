@@ -305,6 +305,18 @@ impl RestClient {
         self.rest_api("POST", rest_method, Some(body), auth).await
     }
 
+    async fn api_put<'a, T: DeserializeOwned, U: Send>(
+        &self,
+        rest_method: &str,
+        body: RequestBody<U>,
+        auth: AuthorizationType<'a>,
+    ) -> Result<T, Error>
+    where
+        Body: From<U>,
+    {
+        self.rest_api("PUT", rest_method, Some(body), auth).await
+    }
+
     async fn rest_api<'a, T: DeserializeOwned, U: Send>(
         &self,
         http_method: &str,
@@ -677,6 +689,32 @@ impl Webex {
                 RequestBody {
                     media_type: "application/json",
                     content: serde_json::to_string(&message)?,
+                },
+                AuthorizationType::Bearer(&self.token),
+            )
+            .await
+    }
+
+    /// Edit an existing message
+    ///
+    /// # Arguments
+    /// * `params`: [`MessageEditParams`] - the message to edit, including the message ID and the room ID,
+    /// as well as the new message text.
+    ///
+    /// # Errors
+    /// Types of errors returned:
+    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// value cannot be deserialised. (If this happens, this is a library bug and should be reported).
+    pub async fn edit_message(&self, message_id: &GlobalId, params: &MessageEditParams<'_>) -> Result<Message, Error> {
+        let rest_method = format!("messages/{}", message_id.id());
+        self.client
+            .api_put(
+                &rest_method,
+                RequestBody {
+                    media_type: "application/json",
+                    content: serde_json::to_string(&params)?,
                 },
                 AuthorizationType::Bearer(&self.token),
             )
