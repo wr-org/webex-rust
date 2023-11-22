@@ -279,7 +279,7 @@ pub struct Message {
 }
 
 #[skip_serializing_none]
-#[derive(crate::types::Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 /// Parameters for listing messages
 pub struct MessageListParams<'a> {
@@ -314,6 +314,24 @@ impl<'a> MessageListParams<'a> {
             max: None,
         }
     }
+}
+
+/// Parameters for editing a message.
+/// `room_id` is required, and at least one of `text` or `markdown` must be set.
+/// Follows <https://developer.webex.com/docs/api/v1/messages/edit-a-message>
+#[skip_serializing_none]
+#[derive(Serialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageEditParams<'a> {
+    /// The id of the room the message is posted in.
+    pub room_id: &'a str,
+    /// The plain text content of the message. If markdown is specified this parameter may be optionally
+    /// used to provide alternate text for UI clients that do not support rich text.
+    pub text: Option<&'a str>,
+    /// The markdown content of the message. If this attribute is set ensure that the request does NOT contain an html attribute.
+    pub markdown: Option<&'a str>,
+    /// The message, in HTML format. The maximum message length is 7439 bytes.
+    pub html: Option<&'a str>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
