@@ -707,7 +707,11 @@ impl Webex {
     /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
     /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
     /// value cannot be deserialised. (If this happens, this is a library bug and should be reported).
-    pub async fn edit_message(&self, message_id: &GlobalId, params: &MessageEditParams<'_>) -> Result<Message, Error> {
+    pub async fn edit_message(
+        &self,
+        message_id: &GlobalId,
+        params: &MessageEditParams<'_>,
+    ) -> Result<Message, Error> {
         let rest_method = format!("messages/{}", message_id.id());
         self.client
             .api_put(
@@ -857,7 +861,8 @@ impl Message {
     /// Contrast with [`MessageOut::from()`] which only replies in the same room.
     #[must_use]
     pub fn reply(&self) -> MessageOut {
-        let mut msg = MessageOut::from(self);
+        let mut msg = MessageOut::default();
+        msg.room_id = self.room_id.clone();
         msg.parent_id = self
             .parent_id
             .as_deref()
