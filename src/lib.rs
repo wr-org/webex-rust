@@ -838,12 +838,15 @@ impl From<&AttachmentAction> for MessageOut {
 impl From<&Message> for MessageOut {
     fn from(msg: &Message) -> Self {
         let mut new_msg = Self::default();
-        new_msg.room_id = msg.room_id.clone();
-        if let Some(person_id) = &msg.person_id {
+
+        if msg.room_type == Some(RoomType::Group) {
+            new_msg.room_id = msg.room_id.clone();
+        } else if let Some(person_id) = &msg.person_id {
             new_msg.to_person_id = Some(person_id.clone());
         } else {
             new_msg.to_person_email = msg.person_email.clone();
         }
+
         new_msg
     }
 }
