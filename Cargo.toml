@@ -1,12 +1,12 @@
 [package]
 name = "webex"
-version = "0.9.0"
+version = "0.9.1"
 authors = [
     "Scott Hutton <shutton@pobox.com>",
     "Milan Stastny <milan@stastnej.ch>",
     "Abel Shields <abel@uucp.org.uk>",
 ]
-edition = "2018"
+edition = "2021"
 description = "Interface to Webex Teams REST and WebSocket APIs"
 keywords = ["webex", "spark"]
 categories = ["asynchronous"]
@@ -44,7 +44,7 @@ version = "1.10"
 features = ["full"]
 
 [dependencies.tokio-tungstenite]
-version = "0.18.0"
+version = "0.20.1"
 features = ["connect", "native-tls"]
 
 [dependencies.uuid]

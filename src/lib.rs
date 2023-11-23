@@ -861,14 +861,15 @@ impl Message {
     /// Contrast with [`MessageOut::from()`] which only replies in the same room.
     #[must_use]
     pub fn reply(&self) -> MessageOut {
-        let mut msg = MessageOut::default();
-        msg.room_id = self.room_id.clone();
-        msg.parent_id = self
-            .parent_id
-            .as_deref()
-            .or(self.id.as_deref())
-            .map(ToOwned::to_owned);
-        msg
+        MessageOut {
+            room_id: self.room_id.clone(),
+            parent_id: self
+                .parent_id
+                .as_deref()
+                .or(self.id.as_deref())
+                .map(ToOwned::to_owned),
+            ..Default::default()
+        }
     }
 }
 
