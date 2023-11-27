@@ -848,6 +848,7 @@ pub struct Column {
     spacing: Option<Spacing>,
     /// "auto", "stretch", a number representing relative width of the column in the column group, or in version 1.1 and higher, a specific pixel width, like "50px".
     #[serde(skip_serializing_if = "Option::is_none")]
+    // TODO: some messages from the api have width as a number, not a string
     width: Option<String>,
     /// A unique identifier associated with the item.
     #[serde(skip_serializing_if = "Option::is_none")]
