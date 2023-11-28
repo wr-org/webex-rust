@@ -644,6 +644,8 @@ pub enum GlobalIdType {
     Person,
     /// Corresponds to the ID of a room
     Room,
+    /// Corresponds to the ID of a team
+    Team,
     /// Retrieves a specific attachment
     AttachmentAction,
     /// This GlobalId represents the ID of something not currently recognised, any API requests
@@ -675,6 +677,7 @@ impl std::fmt::Display for GlobalIdType {
                 Self::Message => "MESSAGE",
                 Self::Person => "PEOPLE",
                 Self::Room => "ROOM",
+                Self::Team => "TEAM",
                 Self::AttachmentAction => "ATTACHMENT_ACTION",
                 Self::Unknown => "<UNKNOWN>",
             }
