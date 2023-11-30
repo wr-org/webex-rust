@@ -21,9 +21,9 @@
 //! - Monitoring an event stream
 //! - Sending direct or group messages
 //! - Getting room memberships
-//! - Building AdaptiveCards and retrieving responses
+//! - Building `AdaptiveCards` and retrieving responses
 //!
-//! Not all features are fully-fleshed out, particularly the AdaptiveCard
+//! Not all features are fully-fleshed out, particularly the `AdaptiveCard`
 //! support (only a few serializations exist, enough to create a form with a
 //! few choices, a text box, and a submit button).
 //!
