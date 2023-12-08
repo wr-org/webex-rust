@@ -727,7 +727,7 @@ impl GlobalId {
         if type_ == GlobalIdType::Unknown {
             return Err("Cannot get globalId for unknown ID type".into());
         }
-        if let Ok(decoded_id) = base64::engine::general_purpose::STANDARD.decode(&id) {
+        if let Ok(decoded_id) = base64::engine::general_purpose::STANDARD_NO_PAD.decode(&id) {
             let decoded_id = std::str::from_utf8(&decoded_id)
                 .chain_err(|| "Failed to turn base64 id into UTF8 string")?;
             Self::check_id(decoded_id, cluster, &type_.to_string())?;
@@ -1027,5 +1027,13 @@ mod tests {
         assert!(MessageActivity::Posted.is_created());
         assert!(MessageActivity::Shared.is_created());
         assert!(!MessageActivity::Deleted.is_created());
+    }
+
+    #[test]
+    fn global_id_without_padding() {
+        // This is a real ID from the API, it does not have the final = padding.
+        let id = "Y2lzY29zcGFyazovL3VzL1BFT1BMRS82YmIwODVmYS1mNmIyLTQyMTAtYjI2Ny1iZTBmZGViYjA3YzQ";
+        let global_id = GlobalId::new(GlobalIdType::Person, id.to_string()).unwrap();
+        assert_eq!(global_id.id(), id);
     }
 }
