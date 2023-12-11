@@ -141,7 +141,7 @@ pub struct Organization {
 }
 
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Eq)]
 /// Holds details about a team that includes the account.
 pub struct Team {
     /// Id of the team
@@ -920,7 +920,7 @@ pub struct AttachmentAction {
 }
 
 /// Person information
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Person {
     /// A unique identifier for the person.
@@ -967,7 +967,7 @@ pub struct Person {
 }
 
 /// Phone number information
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct PhoneNumber {
     /// Phone number type
