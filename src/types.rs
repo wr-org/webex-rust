@@ -68,7 +68,7 @@ mod api {
 
 /// Webex Teams room information
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Room {
     /// A unique identifier for the room.
@@ -93,7 +93,7 @@ pub struct Room {
     pub created: String,
 }
 
-#[derive(crate::types::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, crate::types::Serialize)]
 #[serde(rename_all = "lowercase")]
 /// Sorting order for `RoomListParams`
 pub enum SortRoomsBy {
@@ -106,7 +106,7 @@ pub enum SortRoomsBy {
 }
 
 #[skip_serializing_none]
-#[derive(Default, crate::types::Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, crate::types::Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Parameters for listing rooms
 pub struct RoomListParams<'a> {
@@ -129,7 +129,7 @@ pub struct RoomListParams<'a> {
 }
 
 /// Holds details about the organization an account belongs to.
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Organization {
     /// Id of the org.
@@ -141,7 +141,7 @@ pub struct Organization {
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 /// Holds details about a team that includes the account.
 pub struct Team {
     /// Id of the team
@@ -154,13 +154,13 @@ pub struct Team {
     pub description: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CatalogReply {
     pub service_links: Catalog,
 }
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Catalog {
     pub atlas: String,
@@ -188,7 +188,7 @@ pub struct Catalog {
 }
 
 /// Destination for a `MessageOut`
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Destination {
     /// Post a message in this room
@@ -201,7 +201,7 @@ pub enum Destination {
 
 /// Outgoing message
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageOut {
     /// The parent message to reply to.
@@ -227,7 +227,7 @@ pub struct MessageOut {
 }
 
 /// Type of room
-#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RoomType {
     #[default]
@@ -239,7 +239,7 @@ pub enum RoomType {
 
 /// Webex Teams message information
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     /// The unique identifier for the message.
@@ -279,7 +279,7 @@ pub struct Message {
 }
 
 #[skip_serializing_none]
-#[derive(Serialize, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Parameters for listing messages
 pub struct MessageListParams<'a> {
@@ -320,7 +320,7 @@ impl<'a> MessageListParams<'a> {
 /// `room_id` is required, and at least one of `text` or `markdown` must be set.
 /// Follows <https://developer.webex.com/docs/api/v1/messages/edit-a-message>
 #[skip_serializing_none]
-#[derive(Serialize, Default, Debug)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageEditParams<'a> {
     /// The id of the room the message is posted in.
@@ -334,19 +334,19 @@ pub struct MessageEditParams<'a> {
     pub html: Option<&'a str>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct EmptyReply {}
 
 /// API Error
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DeviceError {
     pub description: String,
 }
 
 #[allow(missing_docs)]
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct DevicesReply {
     pub devices: Option<Vec<DeviceData>>,
     pub message: Option<String>,
@@ -356,7 +356,7 @@ pub(crate) struct DevicesReply {
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceData {
     pub url: Option<String>,
@@ -380,7 +380,7 @@ impl fmt::Display for DeviceData {
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Authorization {
     pub id: String,
     #[serde(rename = "type")]
@@ -403,13 +403,13 @@ impl Authorization {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct AuthToken {
     pub token: String,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Actor {
     pub id: String,
@@ -425,7 +425,7 @@ pub struct Actor {
 
 #[allow(missing_docs)]
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventData {
     pub event_type: String,
@@ -436,7 +436,7 @@ pub struct EventData {
 
 #[allow(missing_docs)]
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Activity {
     pub id: String,
@@ -453,7 +453,7 @@ pub struct Activity {
 }
 
 /// Get what activity an [`Activity`] represents.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActivityType {
     /// Message changed - see [`MessageActivity`] for details.
     Message(MessageActivity),
@@ -479,8 +479,9 @@ pub enum ActivityType {
     /// `"conversation.activity.post"` for `Message(MessageActivity::Posted)`
     Unknown(String),
 }
+
 /// Specifics of what type of activity [`ActivityType::Message`] represents.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MessageActivity {
     /// A message was posted
     Posted,
@@ -494,9 +495,10 @@ pub enum MessageActivity {
     /// A message was deleted
     Deleted,
 }
+
 /// Specifics of what type of activity [`ActivityType::Space`] represents.
 /// TODO: should we merge [`Self::Created`]/[`Self::Joined`]?
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SpaceActivity {
     /// A new space was created with the bot
     Created,
@@ -636,7 +638,7 @@ impl Event {
 
 /// This represents the type of an ID produced by the API, to prevent (for example) message IDs
 /// being used for a room ID.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GlobalIdType {
     /// This GlobalId represents the ID of a message
     Message,
@@ -688,7 +690,7 @@ impl std::fmt::Display for GlobalIdType {
 /// This type is used to hold the ID of a message, room, person etc.
 /// It is created from a certain resource type to make it impossible to use a person ID to fetch a
 /// message, or vice versa.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[must_use]
 pub struct GlobalId {
     id: String,
@@ -803,7 +805,7 @@ impl GlobalId {
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct VectorCounters {
     #[serde(rename = "sourceDC")]
     pub source_dc: String,
@@ -811,7 +813,7 @@ pub struct VectorCounters {
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Target {
     pub id: String,
@@ -825,7 +827,7 @@ pub struct Target {
 
 #[allow(missing_docs)]
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Object {
     pub object_type: String,
@@ -836,13 +838,13 @@ pub struct Object {
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MiscItems {
     pub items: Vec<MiscItem>,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MiscItem {
     pub id: String,
     #[serde(rename = "objectType")]
@@ -855,7 +857,7 @@ pub struct MiscItem {
 /// notification) an event will generate.
 /// There may be another variant for an event that may or may not make an alert (messages with
 /// mentions?)
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertType {
     /// This event won't ever generate an alert (?)
@@ -870,7 +872,7 @@ pub enum AlertType {
 /// Returned from [`WebexEventStream::next()`][`crate::WebexEventStream::next()`]. Contains information about the received event.
 #[allow(missing_docs)]
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
     /// Event ID, may be UUID or base64-encoded. Please do not use this directly, prefer to use
@@ -888,7 +890,7 @@ pub struct Event {
 }
 
 /// Message content attachments attached to the message.
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Attachment {
     /// The content type of the attachment.
     #[serde(rename = "contentType")]
@@ -899,7 +901,7 @@ pub struct Attachment {
 
 /// Attachment action details
 #[skip_serializing_none]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentAction {
     /// A unique identifier for the action.
@@ -920,7 +922,7 @@ pub struct AttachmentAction {
 }
 
 /// Person information
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Person {
     /// A unique identifier for the person.
@@ -967,7 +969,7 @@ pub struct Person {
 }
 
 /// Phone number information
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct PhoneNumber {
     /// Phone number type

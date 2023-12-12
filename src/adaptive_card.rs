@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Adaptive Card structure for message attachment
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct AdaptiveCard {
     /// Must be "AdaptiveCard"
     #[serde(rename = "type")]
@@ -114,7 +114,7 @@ impl From<&mut Self> for AdaptiveCard {
 }
 
 /// Card element types
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type")]
 pub enum CardElement {
     /// Containers group items together.
@@ -824,7 +824,7 @@ impl CardElement {
 }
 
 /// Defines a container that is part of a `ColumnSet`.
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Column {
     /// The card elements to render inside the Column.
     items: Vec<CardElement>,
@@ -904,13 +904,13 @@ impl Column {
 
     /// Sets width
     pub fn set_width<T: Into<String>>(&mut self, s: T) -> Self {
-        self.width =  Some(serde_json::Value::String(s.into()));
+        self.width = Some(serde_json::Value::String(s.into()));
         self.into()
     }
 }
 
 /// Describes a Fact in a `FactSet` as a key/value pair.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Fact {
     /// The title of the fact.
     title: String,
@@ -920,7 +920,7 @@ pub struct Fact {
 
 /// Available color options
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Color {
     Default,
     Dark,
@@ -933,7 +933,7 @@ pub enum Color {
 
 /// Container Styles
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ContainerStyle {
     Default,
     Emphasis,
@@ -945,7 +945,7 @@ pub enum ContainerStyle {
 
 /// Spacing options
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Spacing {
     Default,
     None,
@@ -958,7 +958,7 @@ pub enum Spacing {
 
 /// Choice Input Style
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ChoiceInputStyle {
     Compact,
     Expanded,
@@ -966,7 +966,7 @@ pub enum ChoiceInputStyle {
 
 /// Vertical alignment of content
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum VerticalContentAlignment {
     Top,
     Center,
@@ -975,7 +975,7 @@ pub enum VerticalContentAlignment {
 
 /// Text Input Style
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum TextInputStyle {
     Text,
     Tel,
@@ -985,7 +985,7 @@ pub enum TextInputStyle {
 
 /// Height
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Height {
     Auto,
     Stretch,
@@ -993,7 +993,7 @@ pub enum Height {
 
 /// Image Style
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ImageStyle {
     Default,
     Person,
@@ -1001,7 +1001,7 @@ pub enum ImageStyle {
 
 /// Text Weight
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Weight {
     Default,
     Lighter,
@@ -1010,7 +1010,7 @@ pub enum Weight {
 
 /// Type of font to use for rendering
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum FontType {
     Default,
     Monospace,
@@ -1018,7 +1018,7 @@ pub enum FontType {
 
 /// Text Size
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Size {
     Default,
     Small,
@@ -1029,7 +1029,7 @@ pub enum Size {
 
 /// Image Size
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ImageSize {
     Auto,
     Stretch,
@@ -1040,7 +1040,7 @@ pub enum ImageSize {
 
 /// Controls how this element is horizontally positioned within its parent.
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum HorizontalAlignment {
     Left,
     Center,
@@ -1048,7 +1048,7 @@ pub enum HorizontalAlignment {
 }
 
 /// Available Card Actions
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type")]
 pub enum Action {
     /// Gathers input fields, merges with optional data field, and sends an event to the client. It is up to the client to determine how this data is processed. For example: With BotFramework bots, the client would send an activity through the messaging medium to the bot.
@@ -1092,9 +1092,10 @@ pub enum Action {
 
 /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ActionStyle {
     /// Action is displayed as normal
+    #[default]
     Default,
     /// Action is displayed with a positive style (typically the button becomes accent color)
     Positive,
@@ -1103,7 +1104,7 @@ pub enum ActionStyle {
 }
 
 /// Describes a choice for use in a `ChoiceSet`.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Choice {
     /// Text to display.
     pub title: String,
