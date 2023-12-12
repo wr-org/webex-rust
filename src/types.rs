@@ -441,7 +441,7 @@ pub struct EventData {
 pub struct Activity {
     pub id: String,
     pub object_type: String,
-    pub url: String,
+    pub url: Option<String>,
     pub published: String,
     pub verb: String,
     pub actor: Actor,
