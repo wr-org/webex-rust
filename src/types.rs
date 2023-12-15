@@ -159,6 +159,7 @@ pub struct Team {
 pub(crate) struct CatalogReply {
     pub service_links: Catalog,
 }
+
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -500,27 +501,30 @@ pub enum MessageActivity {
 /// TODO: should we merge [`Self::Created`]/[`Self::Joined`]?
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SpaceActivity {
+    /// Space was changed (i.e. name change, cover image changed, space picture changed).
+    /// Also includes meeting changes (meeting name or schedule)
+    Changed,
     /// A new space was created with the bot
     Created,
+    /// A space was favorited
+    Favorite,
     /// Bot was added to a space... or a reaction was added to a message?
     /// TODO: figure out a way to tell these events apart
     Joined,
     /// Bot left (was kicked out of) a space
     Left,
-    /// Space was changed (i.e. name change, cover image changed, space picture changed).
-    /// Also includes meeting changes (meeting name or schedule)
-    Changed,
-    /// New meeting scheduled
-    MeetingScheduled,
     /// Space became moderated
     Locked,
-    /// Space became unmoderated
-    Unlocked,
-
+    /// New meeting scheduled
+    MeetingScheduled,
     /// A new moderator was assigned
     ModeratorAssigned,
     /// A moderator was unassigned
     ModeratorUnassigned,
+    /// A space was unfavorited
+    Unfavorite,
+    /// Space became unmoderated
+    Unlocked,
 }
 impl TryFrom<&str> for MessageActivity {
     type Error = ();
@@ -538,15 +542,17 @@ impl TryFrom<&str> for SpaceActivity {
     type Error = ();
     fn try_from(s: &str) -> Result<Self, ()> {
         match s {
-            "create" => Ok(Self::Created),
             "add" => Ok(Self::Joined),
+            "assignModerator" => Ok(Self::ModeratorAssigned),
+            "create" => Ok(Self::Created),
+            "favorite" => Ok(Self::Favorite),
             "leave" => Ok(Self::Left),
             "lock" => Ok(Self::Locked),
+            "schedule" => Ok(Self::MeetingScheduled),
+            "unassignModerator" => Ok(Self::ModeratorUnassigned),
+            "unfavorite" => Ok(Self::Unfavorite),
             "unlock" => Ok(Self::Unlocked),
             "update" | "assign" | "unassign" => Ok(Self::Changed),
-            "schedule" => Ok(Self::MeetingScheduled),
-            "assignModerator" => Ok(Self::ModeratorAssigned),
-            "unassignModerator" => Ok(Self::ModeratorUnassigned),
             _ => Err(()),
         }
     }
