@@ -825,8 +825,8 @@ pub struct Target {
     pub id: String,
     pub object_type: String,
     pub url: String,
-    pub participants: MiscItems,
-    pub activities: MiscItems,
+    pub participants: Option<MiscItems>,
+    pub activities: Option<MiscItems>,
     pub tags: Vec<String>,
     pub global_id: Option<String>,
 }
