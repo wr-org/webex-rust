@@ -912,12 +912,15 @@ pub struct Attachment {
 pub struct AttachmentAction {
     /// A unique identifier for the action.
     pub id: String,
-    /// The type of action performed.
+    /// The type of action performed. Only 'submit' is currently supported.
+    /// Required when posting an attachment.
     #[serde(rename = "type")]
     pub action_type: Option<String>,
     /// The parent message the attachment action was performed on.
+    /// Required when posting an attachment.
     pub message_id: Option<String>,
     /// The action's inputs.
+    /// Required when posting an attachment.
     pub inputs: Option<HashMap<String, serde_json::Value>>,
     /// The ID of the person who performed the action.
     pub person_id: Option<String>,
