@@ -618,11 +618,24 @@ impl Event {
             }
         }
     }
-    /// A function to extract a global ID from an activity.
+
+    /// Extract a global ID from an activity.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the event is malformed and a global ID cannot be obtained.
+    #[deprecated(since = "0.10.0", note = "please use `try_global_id` instead")]
+    pub fn get_global_id(&self) -> GlobalId {
+        self.try_global_id()
+            .expect("Could not get global ID from event")
+    }
+
+    /// Extract a global ID from an activity.
+    ///
     /// `event.data.activity.id` is a UUID, which can no longer be used for API requests, meaning any attempt
     /// at using this as an ID in a `Webex::get_*` will fail.
     /// Users should use this function to get a [`GlobalId`], which works with the updated API.
-    pub fn get_global_id(&self) -> GlobalId {
+    pub fn try_global_id(&self) -> Result<GlobalId, crate::error::Error> {
         // Safety: ID should be fine since it's from the API (guaranteed to be UUID or b64 URI).
         //
         // NOTE: Currently uses None as default cluster
@@ -634,11 +647,64 @@ impl Event {
         // part of the URI and we don't need any additional information (the "cluster" argument is
         // ignored).
         let self_activity = self.data.activity.as_ref();
-        GlobalId::new_with_cluster_unchecked(
+        let id = match self.activity_type() {
+            ActivityType::Space(SpaceActivity::Created) => self.room_id_of_space_created_event()?,
+            ActivityType::Space(
+                SpaceActivity::Changed | SpaceActivity::Joined | SpaceActivity::Left,
+            ) => self
+                .data
+                .activity
+                .clone()
+                .and_then(|a| a.target)
+                .and_then(|t| t.global_id)
+                .ok_or(crate::error::ErrorKind::Api(
+                    "Missing global ID in space changed event",
+                ))?,
+            _ => self_activity.map_or_else(|| self.id.clone(), |a| a.id.clone()),
+        };
+        Ok(GlobalId::new_with_cluster_unchecked(
             self.activity_type().into(),
-            self_activity.map_or_else(|| self.id.clone(), |a| a.id.clone()),
+            id,
             None,
-        )
+        ))
+    }
+
+    /// Get the UUID of the room the Space created event corresponds to.
+    /// This is a workaround for a bug in the API, where the UUID returned in the event is not correct.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the event is not `Space::Created` or if activity is not set.
+    fn room_id_of_space_created_event(&self) -> Result<String, crate::error::Error> {
+        assert_eq!(
+            self.activity_type(),
+            ActivityType::Space(SpaceActivity::Created),
+            "Expected space created event, got {:?}",
+            self.activity_type()
+        );
+        let id = self
+            .data
+            .activity
+            .clone()
+            .ok_or(crate::error::ErrorKind::Api(
+                "Missing activity in space created event",
+            ))?
+            .id;
+        // If the id is not a UUID, assume it is already a correct global ID.
+        // This could not be tested though as the API only returns UUID for now.
+        if Uuid::parse_str(&id).is_err() {
+            return Ok(self.id.clone());
+        }
+        // API weirdness... the event contains an id that is close to the room id,
+        // but it is not the same. It differs from the room id by one character,
+        // always by a value of 2.
+        let mut uuid = id;
+        if uuid.as_bytes()[7] == b'2' {
+            uuid.replace_range(7..8, "0");
+        } else {
+            panic!("Space created uuid {uuid} could not be not patched");
+        }
+        Ok(uuid)
     }
 }
 
@@ -663,8 +729,14 @@ pub enum GlobalIdType {
 impl From<ActivityType> for GlobalIdType {
     fn from(a: ActivityType) -> Self {
         match a {
-            ActivityType::Message(_) => Self::Message,
             ActivityType::AdaptiveCardSubmit => Self::AttachmentAction,
+            ActivityType::Message(_) => Self::Message,
+            ActivityType::Space(
+                SpaceActivity::Changed
+                | SpaceActivity::Created
+                | SpaceActivity::Joined
+                | SpaceActivity::Left,
+            ) => Self::Room,
             ActivityType::Unknown(_) => Self::Unknown,
             a => {
                 log::error!(
@@ -1046,5 +1118,25 @@ mod tests {
         let id = "Y2lzY29zcGFyazovL3VzL1BFT1BMRS82YmIwODVmYS1mNmIyLTQyMTAtYjI2Ny1iZTBmZGViYjA3YzQ";
         let global_id = GlobalId::new(GlobalIdType::Person, id.to_string()).unwrap();
         assert_eq!(global_id.id(), id);
+    }
+
+    #[test]
+    fn test_space_created_event_patched_room_id() {
+        let event = Event {
+            data: EventData {
+                event_type: "conversation.activity".to_string(),
+                activity: Some(Activity {
+                    verb: "create".to_string(),
+                    id: "1ab849e2-9ab4-11ee-a70f-d9b57e49f8bf".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            event.room_id_of_space_created_event().unwrap(),
+            "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf"
+        );
     }
 }
