@@ -701,10 +701,10 @@ impl Event {
         let mut uuid = id;
         if uuid.as_bytes()[7] == b'2' {
             uuid.replace_range(7..8, "0");
+            Ok(uuid)
         } else {
-            panic!("Space created uuid {uuid} could not be not patched");
+            Err(crate::error::ErrorKind::Api("Space created event uuid could not be not patched").into())
         }
-        Ok(uuid)
     }
 }
 
