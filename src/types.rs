@@ -703,7 +703,10 @@ impl Event {
             uuid.replace_range(7..8, "0");
             Ok(uuid)
         } else {
-            Err(crate::error::ErrorKind::Api("Space created event uuid could not be not patched").into())
+            Err(
+                crate::error::ErrorKind::Api("Space created event uuid could not be not patched")
+                    .into(),
+            )
         }
     }
 }
@@ -837,6 +840,7 @@ impl GlobalId {
         };
         Self { id, type_ }
     }
+
     fn check_id(id: &str, cluster: Option<&str>, type_: &str) -> Result<(), error::Error> {
         let decoded_parts: Vec<&str> = id.split('/').collect();
         if decoded_parts.len() != 5
@@ -1122,7 +1126,9 @@ mod tests {
 
     #[test]
     fn test_space_created_event_patched_room_id() {
-        let event = Event {
+        // patcheable UUID should return the correct room id
+        let mut event = Event {
+            id: "assumed_valid_base64".to_string(),
             data: EventData {
                 event_type: "conversation.activity".to_string(),
                 activity: Some(Activity {
@@ -1138,5 +1144,22 @@ mod tests {
             event.room_id_of_space_created_event().unwrap(),
             "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf"
         );
+        // invalid UUID (assumed base64) should return the event id
+        event.data.activity = Some(Activity {
+            verb: "create".to_string(),
+            id: "bogus".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(
+            event.room_id_of_space_created_event().unwrap(),
+            "assumed_valid_base64"
+        );
+        // unpatcheable UUID should fail
+        event.data.activity = Some(Activity {
+            verb: "create".to_string(),
+            id: "1ab849e9-9ab4-11ee-a70f-d9b57e49f8bf".to_string(),
+            ..Default::default()
+        });
+        assert!(event.room_id_of_space_created_event().is_err());
     }
 }
