@@ -646,27 +646,30 @@ impl Event {
         // Note, we do not want to parse b64 URI into cluster, since cluster information is already
         // part of the URI and we don't need any additional information (the "cluster" argument is
         // ignored).
-        let self_activity = self.data.activity.as_ref();
+        let activity = self
+            .data
+            .activity
+            .as_ref()
+            .ok_or(crate::error::ErrorKind::Api("Missing activity in event"))?;
         let id = match self.activity_type() {
             ActivityType::Space(SpaceActivity::Created) => self.room_id_of_space_created_event()?,
             ActivityType::Space(
                 SpaceActivity::Changed | SpaceActivity::Joined | SpaceActivity::Left,
-            ) => self
-                .data
-                .activity
-                .clone()
-                .and_then(|a| a.target)
-                .and_then(|t| t.global_id)
-                .ok_or(crate::error::ErrorKind::Api(
-                    "Missing global ID in space changed event",
-                ))?,
-            _ => self_activity.map_or_else(|| self.id.clone(), |a| a.id.clone()),
+            ) => Self::target_global_id(activity)?,
+            ActivityType::Message(MessageActivity::Deleted) => Self::target_global_id(activity)?,
+            _ => activity.id.clone(),
         };
         Ok(GlobalId::new_with_cluster_unchecked(
             self.activity_type().into(),
             id,
             None,
         ))
+    }
+
+    fn target_global_id(activity: &Activity) -> Result<String, error::Error> {
+        Ok(activity.target.clone().and_then(|t| t.global_id).ok_or(
+            crate::error::ErrorKind::Api("Missing target id in activity"),
+        )?)
     }
 
     /// Get the UUID of the room the Space created event corresponds to.
@@ -682,7 +685,7 @@ impl Event {
             "Expected space created event, got {:?}",
             self.activity_type()
         );
-        let id = self
+        let activity_id = self
             .data
             .activity
             .clone()
@@ -692,13 +695,13 @@ impl Event {
             .id;
         // If the id is not a UUID, assume it is already a correct global ID.
         // This could not be tested though as the API only returns UUID for now.
-        if Uuid::parse_str(&id).is_err() {
-            return Ok(self.id.clone());
+        if Uuid::parse_str(&activity_id).is_err() {
+            return Ok(activity_id);
         }
         // API weirdness... the event contains an id that is close to the room id,
         // but it is not the same. It differs from the room id by one character,
         // always by a value of 2.
-        let mut uuid = id;
+        let mut uuid = activity_id;
         if uuid.as_bytes()[7] == b'2' {
             uuid.replace_range(7..8, "0");
             Ok(uuid)
