@@ -439,18 +439,31 @@ pub struct EventData {
 #[skip_serializing_none]
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Activity {
+pub struct ActivityParent {
+    pub actor_id: String,
     pub id: String,
-    pub object_type: String,
-    pub url: Option<String>,
     pub published: String,
-    pub verb: String,
+    #[serde(rename = "type")]
+    pub parent_type: String,
+}
+
+#[allow(missing_docs)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Activity {
     pub actor: Actor,
-    pub object: Object,
-    pub target: Option<Target>,
     pub client_temp_id: Option<String>,
     pub encryption_key_url: Option<String>,
+    pub id: String,
+    pub object_type: String,
+    pub object: Object,
+    pub parent: Option<ActivityParent>,
+    pub published: String,
+    pub target: Option<Target>,
+    pub url: Option<String>,
     pub vector_counters: Option<VectorCounters>,
+    pub verb: String,
 }
 
 /// Get what activity an [`Activity`] represents.
