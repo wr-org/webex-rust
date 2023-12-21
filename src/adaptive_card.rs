@@ -986,6 +986,7 @@ pub enum TextInputStyle {
 /// Height
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Height {
     Auto,
     Stretch,
@@ -1030,6 +1031,7 @@ pub enum Size {
 /// Image Size
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ImageSize {
     Auto,
     Stretch,
