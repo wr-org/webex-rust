@@ -120,6 +120,7 @@ pub enum CardElement {
     /// Containers group items together.
     Container {
         /// The card elements to render inside the Container.
+        #[serde(default)]
         items: Vec<CardElement>,
         /// An Action that will be invoked when the Container is tapped or selected.
         #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
@@ -827,6 +828,7 @@ impl CardElement {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Column {
     /// The card elements to render inside the Column.
+    #[serde(default)]
     items: Vec<CardElement>,
     /// An Action that will be invoked when the Column is tapped or selected.
     #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
@@ -986,6 +988,7 @@ pub enum TextInputStyle {
 /// Height
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Height {
     Auto,
     Stretch,
@@ -1030,6 +1033,7 @@ pub enum Size {
 /// Image Size
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ImageSize {
     Auto,
     Stretch,

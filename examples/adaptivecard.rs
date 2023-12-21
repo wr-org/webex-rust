@@ -53,13 +53,14 @@ async fn main() {
 
 async fn handle_adaptive_card(webex: &webex::Webex, event: &webex::Event) {
     // get attachmentactions
-    let actions: webex::types::AttachmentAction = match webex.get(&event.get_global_id()).await {
-        Ok(a) => a,
-        Err(e) => {
-            println!("Error: {}", e);
-            return;
-        }
-    };
+    let actions: webex::types::AttachmentAction =
+        match webex.get(&event.try_global_id().unwrap()).await {
+            Ok(a) => a,
+            Err(e) => {
+                println!("Error: {}", e);
+                return;
+            }
+        };
     let which_card = actions.inputs.as_ref().and_then(|inputs| inputs.get("id"));
     match which_card {
         None => println!(
@@ -109,7 +110,7 @@ async fn handle_adaptive_card_init(webex: &webex::Webex, actions: &webex::Attach
 
 async fn respond_to_message(webex: &webex::Webex, config: &Config, event: &webex::Event) {
     // Got a posted message
-    let message: webex::Message = match webex.get(&event.get_global_id()).await {
+    let message: webex::Message = match webex.get(&event.try_global_id().unwrap()).await {
         Ok(msg) => msg,
         Err(e) => {
             println!("Failed to get message: {}", e);
