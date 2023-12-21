@@ -938,6 +938,7 @@ pub struct Object {
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MiscItems {
+    #[serde(default)]
     pub items: Vec<MiscItem>,
 }
 
