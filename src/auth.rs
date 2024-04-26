@@ -1,7 +1,7 @@
 #![deny(missing_docs)]
 //! Ways to authenticate with the Webex API
 
-use crate::{Authorization, RequestBody, RestClient};
+use crate::{AuthorizationType, RequestBody, RestClient};
 use hyper::StatusCode;
 use serde::Deserialize;
 use tokio::time::{self, Duration, Instant};
@@ -52,9 +52,9 @@ impl DeviceAuthenticator {
     ///
     /// For more details: <https://developer.webex.com/docs/integrations>.
     #[must_use]
-    pub fn new(id: &str, secret: &str) -> DeviceAuthenticator {
+    pub fn new(id: &str, secret: &str) -> Self {
         let client = RestClient::new();
-        DeviceAuthenticator {
+        Self {
             client_id: id.to_string(),
             client_secret: secret.to_string(),
             client,
@@ -72,9 +72,9 @@ impl DeviceAuthenticator {
                 "device/authorize",
                 RequestBody {
                     media_type: "application/x-www-form-urlencoded; charset=utf-8",
-                    content: serde_urlencoded::to_string(params)?,
+                    content: serde_html_form::to_string(params)?,
                 },
-                Authorization::None,
+                AuthorizationType::None,
             )
             .await?;
         Ok(verification_token)
@@ -107,9 +107,9 @@ impl DeviceAuthenticator {
                     "device/token",
                     RequestBody {
                         media_type: "application/x-www-form-urlencoded; charset=utf-8",
-                        content: serde_urlencoded::to_string(params)?,
+                        content: serde_html_form::to_string(params)?,
                     },
-                    Authorization::Basic {
+                    AuthorizationType::Basic {
                         username: &self.client_id,
                         password: &self.client_secret,
                     },

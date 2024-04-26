@@ -1,18 +1,18 @@
 [package]
 name = "webex"
-version = "0.8.0"
+version = "0.9.3"
 authors = [
     "Scott Hutton <shutton@pobox.com>",
     "Milan Stastny <milan@stastnej.ch>",
     "Abel Shields <abel@uucp.org.uk>",
 ]
-edition = "2018"
+edition = "2021"
 description = "Interface to Webex Teams REST and WebSocket APIs"
 keywords = ["webex", "spark"]
 categories = ["asynchronous"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/shutton/webex-rust.git"
+repository = "https://github.com/wr-org/webex-rust"
 
 [dependencies]
 async-std = "1.9"
@@ -25,10 +25,11 @@ hyper-tls = "0.5"
 log = "0.4"
 serde_json = "1.0"
 tokio-native-tls = "0.3"
-tungstenite = "0.19.0"
+tungstenite = "0.20.1"
 url = "2.2"
 lazy_static = "1.4.0"
-serde_urlencoded = "0.7.1"
+serde_html_form = "0.2.2"
+serde_with = { version = "3.4.0", features = ["macros"] }
 
 [dependencies.chrono]
 version = "0.4"
@@ -43,7 +44,7 @@ version = "1.10"
 features = ["full"]
 
 [dependencies.tokio-tungstenite]
-version = "0.18.0"
+version = "0.20.1"
 features = ["connect", "native-tls"]
 
 [dependencies.uuid]

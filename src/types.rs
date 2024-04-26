@@ -4,15 +4,19 @@
 use crate::{adaptive_card::AdaptiveCard, error, error::ResultExt};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde_with::skip_serializing_none;
 use std::convert::TryFrom;
+use std::{collections::HashMap, fmt};
 use uuid::Uuid;
 
 pub(crate) use api::{Gettable, ListResult};
 
 mod api {
     //! Private crate to hold all types that the user shouldn't have to interact with.
-    use super::{AttachmentAction, Message, Organization, Person, Room, Team};
+    use super::{
+        AttachmentAction, Message, MessageListParams, Organization, Person, Room, RoomListParams,
+        Team,
+    };
 
     /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
     /// in a private crate so users don't see it.
@@ -20,30 +24,40 @@ mod api {
         /// Endpoint to query to perform an HTTP GET request with an id (to get an instance), or
         /// without an id (to list them).
         const API_ENDPOINT: &'static str;
+        type ListParams<'a>: serde::Serialize;
     }
+
+    #[derive(crate::types::Serialize)]
+    pub enum Infallible {}
 
     impl Gettable for Message {
         const API_ENDPOINT: &'static str = "messages";
+        type ListParams<'a> = MessageListParams<'a>;
     }
 
     impl Gettable for Organization {
         const API_ENDPOINT: &'static str = "organizations";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for AttachmentAction {
         const API_ENDPOINT: &'static str = "attachment/actions";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for Room {
         const API_ENDPOINT: &'static str = "rooms";
+        type ListParams<'a> = RoomListParams<'a>;
     }
 
     impl Gettable for Person {
         const API_ENDPOINT: &'static str = "people";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     impl Gettable for Team {
         const API_ENDPOINT: &'static str = "teams";
+        type ListParams<'a> = Option<Infallible>;
     }
 
     #[derive(crate::types::Deserialize)]
@@ -53,13 +67,14 @@ mod api {
 }
 
 /// Webex Teams room information
-#[derive(Deserialize, Serialize, Debug)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Room {
     /// A unique identifier for the room.
     pub id: String,
     /// A user-friendly name for the room.
-    pub title: String,
+    pub title: Option<String>,
     /// The room type.
     ///
     /// direct - 1:1 room
@@ -69,7 +84,6 @@ pub struct Room {
     /// Whether the room is moderated (locked) or not.
     pub is_locked: bool,
     /// The ID for the team with which this room is associated.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
     /// The date and time of the room's last activity.
     pub last_activity: String,
@@ -79,39 +93,75 @@ pub struct Room {
     pub created: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, crate::types::Serialize)]
+#[serde(rename_all = "lowercase")]
+/// Sorting order for `RoomListParams`
+pub enum SortRoomsBy {
+    /// room id
+    Id,
+    /// last activity timestamp
+    LastActivity,
+    /// created timestamp
+    Created,
+}
+
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Eq, PartialEq, crate::types::Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Parameters for listing rooms
+pub struct RoomListParams<'a> {
+    /// List rooms in a team, by ID.
+    pub team_id: Option<&'a str>,
+    /// List rooms by type. Cannot be set in combination with orgPublicSpaces.
+    #[serde(rename = "type")]
+    pub room_type: Option<RoomType>,
+    /// Shows the org's public spaces joined and unjoined. When set the result list is sorted by the madePublic timestamp.
+    pub org_public_spaces: Option<bool>,
+    /// Filters rooms, that were made public after this time. See madePublic timestamp
+    pub from: Option<&'a str>,
+    /// Filters rooms, that were made public before this time. See madePublic timestamp
+    pub to: Option<&'a str>,
+    /// Sort results. Cannot be set in combination with orgPublicSpaces.
+    pub sort_by: Option<SortRoomsBy>,
+    /// Limit the maximum number of rooms in the response.
+    /// Default: 100
+    pub max: Option<u32>,
+}
+
 /// Holds details about the organization an account belongs to.
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Organization {
     /// Id of the org.
     pub id: String,
     /// Display name of the org
-    pub display_name: String,
+    pub display_name: Option<String>,
     /// Date and time the org was created
     pub created: String,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 /// Holds details about a team that includes the account.
 pub struct Team {
     /// Id of the team
     pub id: String,
     /// Name of the team
-    pub name: String,
+    pub name: Option<String>,
     /// Date and time the team was created
     pub created: String,
     /// Team description
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CatalogReply {
     pub service_links: Catalog,
 }
+
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Catalog {
     pub atlas: String,
@@ -139,7 +189,7 @@ pub struct Catalog {
 }
 
 /// Destination for a `MessageOut`
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Destination {
     /// Post a message in this room
@@ -151,41 +201,34 @@ pub enum Destination {
 }
 
 /// Outgoing message
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageOut {
     /// The parent message to reply to.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
     /// The room ID of the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     // TODO - should we use globalIDs? We should check this field before the message is sent
     // rolls up room_id, to_person_id, and to_person_email all in one field :)
     //#[serde(flatten)]
     //pub deliver_to: Option<Destination>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text. The maximum message length is 7439 bytes.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// The message, in Markdown format. The maximum message length is 7439 bytes.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
     /// The public URL to a binary file to be posted into the room. Only one file is allowed per message. Uploaded files are automatically converted into a format that all Webex Teams clients can render. For the supported media types and the behavior of uploads, see the [Message Attachments Guide](https://developer.webex.com/docs/api/basics#message-attachments).
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
     /// Content attachments to attach to the message. Only one card per message is supported.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Attachment>>,
 }
 
 /// Type of room
-#[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RoomType {
     #[default]
@@ -196,208 +239,149 @@ pub enum RoomType {
 }
 
 /// Webex Teams message information
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     /// The unique identifier for the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// The room ID of the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The room type.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_type: Option<RoomType>,
     /// The person ID of the recipient when sending a private 1:1 message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_id: Option<String>,
     /// The email address of the recipient when sending a private 1:1 message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_person_email: Option<String>,
     /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// The message, in Markdown format.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
     /// The text content of the message, in HTML format. This read-only property is used by the Webex Teams clients.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
     /// Public URLs for files attached to the message. For the supported media types and the behavior of file uploads, see Message Attachments.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
     /// The person ID of the message author.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The email address of the message author.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_email: Option<String>,
     /// People IDs for anyone mentioned in the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentioned_people: Option<Vec<String>>,
     /// Group names for the groups mentioned in the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentioned_groups: Option<Vec<String>>,
     /// Message content attachments attached to the message.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Attachment>>,
     /// The date and time the message was created.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
     /// The date and time the message was updated, if it was edited.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
     /// The ID of the "parent" message (the start of the reply chain)
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Parameters for listing messages
+pub struct MessageListParams<'a> {
+    /// List messages in a room, by ID.
+    pub room_id: &'a str,
+    /// List messages with a parent, by ID.
+    pub parent_id: Option<&'a str>,
+    /// List messages with these people mentioned, by ID. Use me as a shorthand for the current API user.
+    /// Only me or the person ID of the current user may be specified. Bots must include this parameter
+    /// to list messages in group rooms (spaces).
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    pub mentioned_people: &'a [&'a str],
+    /// List messages sent before a date and time.
+    pub before: Option<&'a str>,
+    /// List messages sent before a message, by ID.
+    pub before_message: Option<&'a str>,
+    /// Limit the maximum number of messages in the response.
+    /// Default: 50
+    pub max: Option<u32>,
+}
+
+impl<'a> MessageListParams<'a> {
+    /// Creates a new `MessageListParams` with the given room ID.
+    #[allow(clippy::must_use_candidate)]
+    pub const fn new(room_id: &'a str) -> Self {
+        Self {
+            room_id,
+            parent_id: None,
+            mentioned_people: &[],
+            before: None,
+            before_message: None,
+            max: None,
+        }
+    }
+}
+
+/// Parameters for editing a message.
+/// `room_id` is required, and at least one of `text` or `markdown` must be set.
+/// Follows <https://developer.webex.com/docs/api/v1/messages/edit-a-message>
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageEditParams<'a> {
+    /// The id of the room the message is posted in.
+    pub room_id: &'a str,
+    /// The plain text content of the message. If markdown is specified this parameter may be optionally
+    /// used to provide alternate text for UI clients that do not support rich text.
+    pub text: Option<&'a str>,
+    /// The markdown content of the message. If this attribute is set ensure that the request does NOT contain an html attribute.
+    pub markdown: Option<&'a str>,
+    /// The message, in HTML format. The maximum message length is 7439 bytes.
+    pub html: Option<&'a str>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct EmptyReply {}
 
 /// API Error
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug)]
-pub struct Error {
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DeviceError {
     pub description: String,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct DevicesReply {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub devices: Option<Vec<DeviceData>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<Error>>,
-    #[serde(rename = "trackingId", skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<DeviceError>>,
+    #[serde(rename = "trackingId")]
     pub tracking_id: Option<String>,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceData {
     pub url: Option<String>,
     #[serde(rename = "webSocketUrl")]
     pub ws_url: Option<String>,
-    #[serde(skip_serializing)]
-    pub services: Option<HashMap<String, String>>,
     pub device_name: Option<String>,
     pub device_type: Option<String>,
     pub localized_model: Option<String>,
-    pub capabilities: Option<DeviceCapabilities>,
-    pub features: Option<DeviceFeatures>,
-    pub creation_time: Option<chrono::DateTime<chrono::Utc>>,
     pub modification_time: Option<chrono::DateTime<chrono::Utc>>,
-    pub device_settings_string: Option<String>,
-    pub show_support_text: Option<bool>,
-    pub reporting_site_url: Option<String>,
-    pub reporting_site_desc: Option<String>,
-    pub is_device_managed: Option<bool>,
-    pub client_security_policy: Option<String>,
-    pub intranet_inactivity_check_url: Option<String>,
     pub model: Option<String>,
     pub name: Option<String>,
     pub system_name: Option<String>,
     pub system_version: Option<String>,
-    pub block_external_communications: Option<bool>,
-    pub client_messaging_giphy: Option<String>,
-    pub client_messaging_link_preview: Option<String>,
-    pub ecm_enabled_for_all_users: Option<bool>,
-    pub ecm_supported_storage_providers: Option<Vec<String>>,
-    pub default_ecm_microsoft_cloud: Option<String>,
-    pub ecm_microsoft_tenant: Option<String>,
-    pub ecm_screen_capture_feature_allowed: Option<bool>,
-    pub ecm_whiteboard_file_data_allowed: Option<bool>,
-    pub calling_behavior: Option<String>,
-    pub on_premise_pairing_enabled: Option<bool>,
-    pub people_insights_enabled: Option<bool>,
-    pub allow_self_signed_certificate: Option<bool>,
-    pub webex_cross_launch: Option<bool>,
-    pub settings: Option<DeviceSettings>,
-    pub user_id: Option<String>,
-    pub org_id: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(missing_docs)]
-pub struct DeviceFeatures {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub developer: Option<Vec<DeviceFeatureData>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub entitlement: Option<Vec<DeviceFeatureData>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<Vec<DeviceFeatureData>>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(missing_docs)]
-pub struct DeviceFeatureData {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub val: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mutable: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_modified: Option<String>,
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    pub type_field: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub deleted_time: Option<i64>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(missing_docs, clippy::struct_excessive_bools)]
-pub struct DeviceCapabilities {
-    pub group_call_supported: bool,
-    pub local_notification_supported: bool,
-    pub delete_notification_supported: bool,
-    pub sdp_supported: bool,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(missing_docs, clippy::struct_excessive_bools)]
-pub struct DeviceSettings {
-    pub reporting_site_url: String,
-    pub reporting_site_desc: String,
-    pub show_support_text: bool,
-    pub webex_cross_launch: bool,
-    pub enable_intra_org_teams_call: bool,
-    pub mobile_suppress_lock_screen_preview: bool,
-    pub mobile_auto_lock_idle_timeout: i64,
-    pub disable_meeting_scheduling: bool,
-    pub ecm_enabled_for_all_users: bool,
-    pub ecm_supported_storage_providers: Vec<String>,
-    pub ecm_supported_folder_providers: Vec<String>,
-    pub default_ecm_microsoft_cloud: String,
-    pub ecm_microsoft_tenant: String,
-    pub default_file_upload_location: String,
-    pub restrict_accounts_to_email_domain: bool,
-    pub ecm_screen_capture_feature_allowed: bool,
-    pub ecm_whiteboard_file_data_allowed: bool,
-    pub on_premise_pairing_enabled: bool,
-    pub calling_behavior: String,
-    pub client_messaging_giphy: String,
-    pub client_messaging_link_preview: String,
-    pub client_security_policy: String,
-    pub intranet_inactivity_check_url: String,
-    pub people_insights_enabled: bool,
-    pub allow_self_signed_certificate: bool,
-    pub block_external_communications: bool,
-    pub reactions_enabled: bool,
-    pub team_guest_member_restriction_enabled: bool,
-    pub space_classifications_enabled: bool,
+impl fmt::Display for DeviceData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "name: {:?}, device_name: {:?}, device_type: {:?}, model: {:?}, system_name: {:?}, system_version: {:?}, url: {:?}",
+        self.name, self.device_name, self.device_type, self.model, self.system_name, self.system_version, self.url)
+    }
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Authorization {
     pub id: String,
     #[serde(rename = "type")]
@@ -420,13 +404,13 @@ impl Authorization {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct AuthToken {
     pub token: String,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Actor {
     pub id: String,
@@ -441,41 +425,49 @@ pub struct Actor {
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventData {
     pub event_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<Actor>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub activity: Option<Activity>,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityParent {
+    pub actor_id: String,
+    pub id: String,
+    pub published: String,
+    #[serde(rename = "type")]
+    pub parent_type: String,
+}
+
+#[allow(missing_docs)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Activity {
+    pub actor: Actor,
+    pub client_temp_id: Option<String>,
+    pub encryption_key_url: Option<String>,
     pub id: String,
     pub object_type: String,
-    pub url: String,
-    pub published: String,
-    pub verb: String,
-    pub actor: Actor,
     pub object: Object,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<ActivityParent>,
+    pub published: String,
     pub target: Option<Target>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_temp_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encryption_key_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     pub vector_counters: Option<VectorCounters>,
+    pub verb: String,
 }
 
 /// Get what activity an [`Activity`] represents.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActivityType {
     /// Message changed - see [`MessageActivity`] for details.
     Message(MessageActivity),
@@ -501,8 +493,9 @@ pub enum ActivityType {
     /// `"conversation.activity.post"` for `Message(MessageActivity::Posted)`
     Unknown(String),
 }
+
 /// Specifics of what type of activity [`ActivityType::Message`] represents.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MessageActivity {
     /// A message was posted
     Posted,
@@ -516,31 +509,35 @@ pub enum MessageActivity {
     /// A message was deleted
     Deleted,
 }
+
 /// Specifics of what type of activity [`ActivityType::Space`] represents.
 /// TODO: should we merge [`Self::Created`]/[`Self::Joined`]?
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SpaceActivity {
+    /// Space was changed (i.e. name change, cover image changed, space picture changed).
+    /// Also includes meeting changes (meeting name or schedule)
+    Changed,
     /// A new space was created with the bot
     Created,
+    /// A space was favorited
+    Favorite,
     /// Bot was added to a space... or a reaction was added to a message?
     /// TODO: figure out a way to tell these events apart
     Joined,
     /// Bot left (was kicked out of) a space
     Left,
-    /// Space was changed (i.e. name change, cover image changed, space picture changed).
-    /// Also includes meeting changes (meeting name or schedule)
-    Changed,
-    /// New meeting scheduled
-    MeetingScheduled,
     /// Space became moderated
     Locked,
-    /// Space became unmoderated
-    Unlocked,
-
+    /// New meeting scheduled
+    MeetingScheduled,
     /// A new moderator was assigned
     ModeratorAssigned,
     /// A moderator was unassigned
     ModeratorUnassigned,
+    /// A space was unfavorited
+    Unfavorite,
+    /// Space became unmoderated
+    Unlocked,
 }
 impl TryFrom<&str> for MessageActivity {
     type Error = ();
@@ -558,15 +555,17 @@ impl TryFrom<&str> for SpaceActivity {
     type Error = ();
     fn try_from(s: &str) -> Result<Self, ()> {
         match s {
-            "create" => Ok(Self::Created),
             "add" => Ok(Self::Joined),
+            "assignModerator" => Ok(Self::ModeratorAssigned),
+            "create" => Ok(Self::Created),
+            "favorite" => Ok(Self::Favorite),
             "leave" => Ok(Self::Left),
             "lock" => Ok(Self::Locked),
+            "schedule" => Ok(Self::MeetingScheduled),
+            "unassignModerator" => Ok(Self::ModeratorUnassigned),
+            "unfavorite" => Ok(Self::Unfavorite),
             "unlock" => Ok(Self::Unlocked),
             "update" | "assign" | "unassign" => Ok(Self::Changed),
-            "schedule" => Ok(Self::MeetingScheduled),
-            "assignModerator" => Ok(Self::ModeratorAssigned),
-            "unassignModerator" => Ok(Self::ModeratorUnassigned),
             _ => Err(()),
         }
     }
@@ -583,6 +582,10 @@ impl Event {
     /// Get the type of resource the event corresponds to.
     /// Also contains details about the event action for some event types.
     /// For more details, check [`ActivityType`].
+    ///
+    /// # Panics
+    ///
+    /// Will panic if conversation activity is not set
     #[must_use]
     pub fn activity_type(&self) -> ActivityType {
         match self.data.event_type.as_str() {
@@ -612,10 +615,7 @@ impl Event {
                                 "Unknown activity type `{}`, returning Unknown",
                                 activity_type
                             );
-                            ActivityType::Unknown(format!(
-                                "conversation.activity.{}",
-                                activity_type
-                            ))
+                            ActivityType::Unknown(format!("conversation.activity.{activity_type}"))
                         }
                     }
                 }
@@ -631,11 +631,24 @@ impl Event {
             }
         }
     }
-    /// A function to extract a global ID from an activity.
+
+    /// Extract a global ID from an activity.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the event is malformed and a global ID cannot be obtained.
+    #[deprecated(since = "0.10.0", note = "please use `try_global_id` instead")]
+    pub fn get_global_id(&self) -> GlobalId {
+        self.try_global_id()
+            .expect("Could not get global ID from event")
+    }
+
+    /// Extract a global ID from an activity.
+    ///
     /// `event.data.activity.id` is a UUID, which can no longer be used for API requests, meaning any attempt
     /// at using this as an ID in a `Webex::get_*` will fail.
     /// Users should use this function to get a [`GlobalId`], which works with the updated API.
-    pub fn get_global_id(&self) -> GlobalId {
+    pub fn try_global_id(&self) -> Result<GlobalId, crate::error::Error> {
         // Safety: ID should be fine since it's from the API (guaranteed to be UUID or b64 URI).
         //
         // NOTE: Currently uses None as default cluster
@@ -646,18 +659,77 @@ impl Event {
         // Note, we do not want to parse b64 URI into cluster, since cluster information is already
         // part of the URI and we don't need any additional information (the "cluster" argument is
         // ignored).
-        let self_activity = self.data.activity.as_ref();
-        GlobalId::new_with_cluster_unchecked(
+        let activity = self
+            .data
+            .activity
+            .as_ref()
+            .ok_or(crate::error::ErrorKind::Api("Missing activity in event"))?;
+        let id = match self.activity_type() {
+            ActivityType::Space(SpaceActivity::Created) => self.room_id_of_space_created_event()?,
+            ActivityType::Space(
+                SpaceActivity::Changed | SpaceActivity::Joined | SpaceActivity::Left,
+            ) => Self::target_global_id(activity)?,
+            ActivityType::Message(MessageActivity::Deleted) => Self::target_global_id(activity)?,
+            _ => activity.id.clone(),
+        };
+        Ok(GlobalId::new_with_cluster_unchecked(
             self.activity_type().into(),
-            self_activity.map_or_else(|| self.id.clone(), |a| a.id.clone()),
+            id,
             None,
-        )
+        ))
+    }
+
+    fn target_global_id(activity: &Activity) -> Result<String, error::Error> {
+        Ok(activity.target.clone().and_then(|t| t.global_id).ok_or(
+            crate::error::ErrorKind::Api("Missing target id in activity"),
+        )?)
+    }
+
+    /// Get the UUID of the room the Space created event corresponds to.
+    /// This is a workaround for a bug in the API, where the UUID returned in the event is not correct.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the event is not `Space::Created` or if activity is not set.
+    fn room_id_of_space_created_event(&self) -> Result<String, crate::error::Error> {
+        assert_eq!(
+            self.activity_type(),
+            ActivityType::Space(SpaceActivity::Created),
+            "Expected space created event, got {:?}",
+            self.activity_type()
+        );
+        let activity_id = self
+            .data
+            .activity
+            .clone()
+            .ok_or(crate::error::ErrorKind::Api(
+                "Missing activity in space created event",
+            ))?
+            .id;
+        // If the id is not a UUID, assume it is already a correct global ID.
+        // This could not be tested though as the API only returns UUID for now.
+        if Uuid::parse_str(&activity_id).is_err() {
+            return Ok(activity_id);
+        }
+        // API weirdness... the event contains an id that is close to the room id,
+        // but it is not the same. It differs from the room id by one character,
+        // always by a value of 2.
+        let mut uuid = activity_id;
+        if uuid.as_bytes()[7] == b'2' {
+            uuid.replace_range(7..8, "0");
+            Ok(uuid)
+        } else {
+            Err(
+                crate::error::ErrorKind::Api("Space created event uuid could not be not patched")
+                    .into(),
+            )
+        }
     }
 }
 
 /// This represents the type of an ID produced by the API, to prevent (for example) message IDs
 /// being used for a room ID.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GlobalIdType {
     /// This GlobalId represents the ID of a message
     Message,
@@ -665,6 +737,8 @@ pub enum GlobalIdType {
     Person,
     /// Corresponds to the ID of a room
     Room,
+    /// Corresponds to the ID of a team
+    Team,
     /// Retrieves a specific attachment
     AttachmentAction,
     /// This GlobalId represents the ID of something not currently recognised, any API requests
@@ -674,8 +748,14 @@ pub enum GlobalIdType {
 impl From<ActivityType> for GlobalIdType {
     fn from(a: ActivityType) -> Self {
         match a {
-            ActivityType::Message(_) => Self::Message,
             ActivityType::AdaptiveCardSubmit => Self::AttachmentAction,
+            ActivityType::Message(_) => Self::Message,
+            ActivityType::Space(
+                SpaceActivity::Changed
+                | SpaceActivity::Created
+                | SpaceActivity::Joined
+                | SpaceActivity::Left,
+            ) => Self::Room,
             ActivityType::Unknown(_) => Self::Unknown,
             a => {
                 log::error!(
@@ -696,6 +776,7 @@ impl std::fmt::Display for GlobalIdType {
                 Self::Message => "MESSAGE",
                 Self::Person => "PEOPLE",
                 Self::Room => "ROOM",
+                Self::Team => "TEAM",
                 Self::AttachmentAction => "ATTACHMENT_ACTION",
                 Self::Unknown => "<UNKNOWN>",
             }
@@ -706,7 +787,7 @@ impl std::fmt::Display for GlobalIdType {
 /// This type is used to hold the ID of a message, room, person etc.
 /// It is created from a certain resource type to make it impossible to use a person ID to fetch a
 /// message, or vice versa.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[must_use]
 pub struct GlobalId {
     id: String,
@@ -745,7 +826,7 @@ impl GlobalId {
         if type_ == GlobalIdType::Unknown {
             return Err("Cannot get globalId for unknown ID type".into());
         }
-        if let Ok(decoded_id) = base64::engine::general_purpose::STANDARD.decode(&id) {
+        if let Ok(decoded_id) = base64::engine::general_purpose::STANDARD_NO_PAD.decode(&id) {
             let decoded_id = std::str::from_utf8(&decoded_id)
                 .chain_err(|| "Failed to turn base64 id into UTF8 string")?;
             Self::check_id(decoded_id, cluster, &type_.to_string())?;
@@ -775,6 +856,7 @@ impl GlobalId {
         };
         Self { id, type_ }
     }
+
     fn check_id(id: &str, cluster: Option<&str>, type_: &str) -> Result<(), error::Error> {
         let decoded_parts: Vec<&str> = id.split('/').collect();
         if decoded_parts.len() != 5
@@ -821,7 +903,7 @@ impl GlobalId {
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct VectorCounters {
     #[serde(rename = "sourceDC")]
     pub source_dc: String,
@@ -829,41 +911,39 @@ pub struct VectorCounters {
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Target {
     pub id: String,
     pub object_type: String,
     pub url: String,
-    pub participants: MiscItems,
-    pub activities: MiscItems,
+    pub participants: Option<MiscItems>,
+    pub activities: Option<MiscItems>,
     pub tags: Vec<String>,
-    pub global_id: String,
+    pub global_id: Option<String>,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Object {
     pub object_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<MiscItems>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub inputs: Option<String>,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MiscItems {
+    #[serde(default)]
     pub items: Vec<MiscItem>,
 }
 
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MiscItem {
     pub id: String,
     #[serde(rename = "objectType")]
@@ -876,7 +956,7 @@ pub struct MiscItem {
 /// notification) an event will generate.
 /// There may be another variant for an event that may or may not make an alert (messages with
 /// mentions?)
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertType {
     /// This event won't ever generate an alert (?)
@@ -890,7 +970,8 @@ pub enum AlertType {
 
 /// Returned from [`WebexEventStream::next()`][`crate::WebexEventStream::next()`]. Contains information about the received event.
 #[allow(missing_docs)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
     /// Event ID, may be UUID or base64-encoded. Please do not use this directly, prefer to use
@@ -901,7 +982,6 @@ pub struct Event {
     /// Timestamp in milliseconds since epoch.
     pub timestamp: i64,
     pub tracking_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub alert_type: Option<AlertType>,
     pub headers: HashMap<String, String>,
     pub sequence_number: i64,
@@ -909,7 +989,7 @@ pub struct Event {
 }
 
 /// Message content attachments attached to the message.
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Attachment {
     /// The content type of the attachment.
     #[serde(rename = "contentType")]
@@ -919,33 +999,32 @@ pub struct Attachment {
 }
 
 /// Attachment action details
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[skip_serializing_none]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentAction {
     /// A unique identifier for the action.
     pub id: String,
-    /// The type of action performed.
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    /// The type of action performed. Only 'submit' is currently supported.
+    /// Required when posting an attachment.
+    #[serde(rename = "type")]
     pub action_type: Option<String>,
     /// The parent message the attachment action was performed on.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Required when posting an attachment.
     pub message_id: Option<String>,
     /// The action's inputs.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Required when posting an attachment.
     pub inputs: Option<HashMap<String, serde_json::Value>>,
     /// The ID of the person who performed the action.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub person_id: Option<String>,
     /// The ID of the room the action was performed within.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub room_id: Option<String>,
     /// The date and time the action was created.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
 }
 
 /// Person information
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Person {
     /// A unique identifier for the person.
@@ -992,7 +1071,7 @@ pub struct Person {
 }
 
 /// Phone number information
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct PhoneNumber {
     /// Phone number type
@@ -1052,5 +1131,52 @@ mod tests {
         assert!(MessageActivity::Posted.is_created());
         assert!(MessageActivity::Shared.is_created());
         assert!(!MessageActivity::Deleted.is_created());
+    }
+
+    #[test]
+    fn global_id_without_padding() {
+        // This is a real ID from the API, it does not have the final = padding.
+        let id = "Y2lzY29zcGFyazovL3VzL1BFT1BMRS82YmIwODVmYS1mNmIyLTQyMTAtYjI2Ny1iZTBmZGViYjA3YzQ";
+        let global_id = GlobalId::new(GlobalIdType::Person, id.to_string()).unwrap();
+        assert_eq!(global_id.id(), id);
+    }
+
+    #[test]
+    fn test_space_created_event_patched_room_id() {
+        // patcheable UUID should return the correct room id
+        let mut event = Event {
+            id: "assumed_valid_base64".to_string(),
+            data: EventData {
+                event_type: "conversation.activity".to_string(),
+                activity: Some(Activity {
+                    verb: "create".to_string(),
+                    id: "1ab849e2-9ab4-11ee-a70f-d9b57e49f8bf".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            event.room_id_of_space_created_event().unwrap(),
+            "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf"
+        );
+        // invalid UUID (assumed base64) should return the event id
+        event.data.activity = Some(Activity {
+            verb: "create".to_string(),
+            id: "bogus".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(
+            event.room_id_of_space_created_event().unwrap(),
+            "assumed_valid_base64"
+        );
+        // unpatcheable UUID should fail
+        event.data.activity = Some(Activity {
+            verb: "create".to_string(),
+            id: "1ab849e9-9ab4-11ee-a70f-d9b57e49f8bf".to_string(),
+            ..Default::default()
+        });
+        assert!(event.room_id_of_space_created_event().is_err());
     }
 }

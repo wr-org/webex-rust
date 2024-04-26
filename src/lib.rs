@@ -3,10 +3,12 @@
 // clippy::use_self fixed in https://github.com/rust-lang/rust-clippy/pull/9454
 // TODO: remove this when clippy bug fixed in stable
 #![allow(clippy::use_self)]
+// should support this in the future - would be nice if all futures were send
+#![allow(clippy::future_not_send)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::option_if_let_else)]
 #![cfg_attr(test, deny(warnings))]
-#![doc(html_root_url = "https://docs.rs/webex/0.2.0/webex/")]
+#![doc(html_root_url = "https://docs.rs/webex/latest/webex/")]
 
 //! # webex-rust
 //!
@@ -19,9 +21,9 @@
 //! - Monitoring an event stream
 //! - Sending direct or group messages
 //! - Getting room memberships
-//! - Building AdaptiveCards and retrieving responses
+//! - Building `AdaptiveCards` and retrieving responses
 //!
-//! Not all features are fully-fleshed out, particularly the AdaptiveCard
+//! Not all features are fully-fleshed out, particularly the `AdaptiveCard`
 //! support (only a few serializations exist, enough to create a form with a
 //! few choices, a text box, and a submit button).
 //!
@@ -45,13 +47,12 @@ pub mod auth;
 use error::{Error, ErrorKind, ResultExt};
 
 use crate::adaptive_card::AdaptiveCard;
-use crate::types::Attachment;
 use base64::{engine::general_purpose as bas64enc, Engine as _};
 use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
 use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
 use hyper_tls::HttpsConnector;
-use log::{debug, trace, warn};
+use log::{debug, error, trace, warn};
 use serde::de::DeserializeOwned;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -61,7 +62,9 @@ use std::{
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
-    connect_async, tungstenite::Message as TMessage, MaybeTlsStream, WebSocketStream,
+    connect_async,
+    tungstenite::{Error as TErr, Message as TMessage},
+    MaybeTlsStream, WebSocketStream,
 };
 
 /*
@@ -81,6 +84,10 @@ const U2C_HOST_PREFIX: &str = "https://u2c.wbx2.com/u2c/api/v1";
 const DEFAULT_REGISTRATION_HOST_PREFIX: &str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// Qualify webex devices created by this crate
+const DEFAULT_DEVICE_NAME: &str = "rust-client";
+const DEVICE_SYSTEM_NAME: &str = "rust-spark-client";
 
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -129,6 +136,7 @@ impl WebexEventStream {
                 }
                 // Didn't time out
                 Ok(next_result) => match next_result {
+                    None => continue,
                     Some(msg) => match msg {
                         Ok(msg) => {
                             if let Some(h_msg) = self.handle_message(msg)? {
@@ -136,10 +144,12 @@ impl WebexEventStream {
                             }
                             // `None` messages still reset the timeout (e.g. Ping to keep alive)
                         }
-                        Err(tokio_tungstenite::tungstenite::Error::Protocol(e)) => {
+                        Err(TErr::Protocol(_) | TErr::Io(_)) => {
                             // Protocol error probably requires a connection reset
+                            // IO error is (apart from WouldBlock) generally an error with the
+                            // underlying connection and also fatal
                             self.is_open = false;
-                            return Err(e.to_string().into());
+                            return Err(msg.unwrap_err().to_string().into());
                         }
                         Err(e) => {
                             return Err(ErrorKind::Tungstenite(
@@ -149,7 +159,6 @@ impl WebexEventStream {
                             .into())
                         }
                     },
-                    None => continue,
                 },
             }
         }
@@ -201,7 +210,7 @@ impl WebexEventStream {
             .send(TMessage::Text(serde_json::to_string(&auth).unwrap()))
             .await
         {
-            Ok(_) => {
+            Ok(()) => {
                 /*
                  * The next thing back should be a pong
                  */
@@ -226,7 +235,7 @@ impl WebexEventStream {
     }
 }
 
-enum Authorization<'a> {
+enum AuthorizationType<'a> {
     None,
     Bearer(&'a str),
     Basic {
@@ -251,11 +260,11 @@ where
 }
 
 impl RestClient {
-    /// Creates a new RestClient
-    pub fn new() -> RestClient {
+    /// Creates a new `RestClient`
+    pub fn new() -> Self {
         let https = HttpsConnector::new();
         let web_client = Client::builder().build::<_, hyper::Body>(https);
-        RestClient {
+        Self {
             host_prefix: HashMap::new(),
             web_client,
         }
@@ -269,7 +278,7 @@ impl RestClient {
     async fn api_get<'a, T: DeserializeOwned>(
         &self,
         rest_method: &str,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
         let body: Option<RequestBody<String>> = None;
         self.rest_api("GET", rest_method, body, auth).await
@@ -278,17 +287,17 @@ impl RestClient {
     async fn api_delete<'a>(
         &self,
         rest_method: &str,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<(), Error> {
         let body: Option<RequestBody<String>> = None;
         self.rest_api("DELETE", rest_method, body, auth).await
     }
 
-    async fn api_post<'a, T: DeserializeOwned, U>(
+    async fn api_post<'a, T: DeserializeOwned, U: Send>(
         &self,
         rest_method: &str,
         body: RequestBody<U>,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<T, Error>
     where
         Body: From<U>,
@@ -296,12 +305,24 @@ impl RestClient {
         self.rest_api("POST", rest_method, Some(body), auth).await
     }
 
-    async fn rest_api<'a, T: DeserializeOwned, U>(
+    async fn api_put<'a, T: DeserializeOwned, U: Send>(
+        &self,
+        rest_method: &str,
+        body: RequestBody<U>,
+        auth: AuthorizationType<'a>,
+    ) -> Result<T, Error>
+    where
+        Body: From<U>,
+    {
+        self.rest_api("PUT", rest_method, Some(body), auth).await
+    }
+
+    async fn rest_api<'a, T: DeserializeOwned, U: Send>(
         &self,
         http_method: &str,
         rest_method: &str,
         body: Option<RequestBody<U>>,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<T, Error>
     where
         Body: From<U>,
@@ -314,18 +335,18 @@ impl RestClient {
             reply_str = "null";
         }
         serde_json::from_str(reply_str).map_err(|e| {
-            debug!("Couldn't parse reply for {} call: {}", rest_method, e);
-            debug!("Source JSON: `{}`", reply_str);
+            error!("Couldn't parse reply for {} call: {:#?}", rest_method, e);
+            trace!("Source JSON: `{}`", reply_str);
             Error::with_chain(e, "failed to parse reply")
         })
     }
 
-    async fn call_web_api_raw<'a, T>(
+    async fn call_web_api_raw<'a, T: Send>(
         &self,
         http_method: &str,
         rest_method: &str,
         body: Option<RequestBody<T>>,
-        auth: Authorization<'a>,
+        auth: AuthorizationType<'a>,
     ) -> Result<String, Error>
     where
         Body: From<T>,
@@ -339,12 +360,12 @@ impl RestClient {
         let url = format!("{prefix}/{rest_method}");
         debug!("Calling {} {:?}", http_method, url);
         let mut builder = match auth {
-            Authorization::None => Request::builder(),
-            Authorization::Basic { username, password } => {
+            AuthorizationType::None => Request::builder(),
+            AuthorizationType::Basic { username, password } => {
                 let encoded = bas64enc::STANDARD_NO_PAD.encode(format!("{username}:{password}"));
                 Request::builder().header("Authorization", format!("Basic {encoded}"))
             }
-            Authorization::Bearer(token) => {
+            AuthorizationType::Bearer(token) => {
                 Request::builder().header("Authorization", format!("Bearer {token}"))
             }
         }
@@ -398,6 +419,12 @@ impl Webex {
     /// Tokens can be obtained when creating a bot, see <https://developer.webex.com/my-apps> for
     /// more information and to create your own Webex bots.
     pub async fn new(token: &str) -> Self {
+        Self::new_with_device_name(DEFAULT_DEVICE_NAME, token).await
+    }
+
+    /// Constructs a new Webex Teams context from a token and a chosen name
+    /// The name is used to identify the device/client with Webex api
+    pub async fn new_with_device_name(device_name: &str, token: &str) -> Self {
         let https = HttpsConnector::new();
         let web_client = Client::builder().build::<_, hyper::Body>(https);
         let mut client: RestClient = RestClient {
@@ -420,12 +447,12 @@ impl Webex {
             client,
             token: token.to_string(),
             device: DeviceData {
-                device_name: Some("rust-client".to_string()),
+                device_name: Some(DEFAULT_DEVICE_NAME.to_string()),
                 device_type: Some("DESKTOP".to_string()),
                 localized_model: Some("rust".to_string()),
                 model: Some(format!("rust-v{CRATE_VERSION}")),
-                name: Some("rust-spark-client".to_string()),
-                system_name: Some("rust-spark-client".to_string()),
+                name: Some(device_name.to_owned()),
+                system_name: Some(DEVICE_SYSTEM_NAME.to_string()),
                 system_version: Some(CRATE_VERSION.to_string()),
                 ..DeviceData::default()
             },
@@ -456,9 +483,9 @@ impl Webex {
         // refactored out to make it easier to loop through all devices and also lazily create a
         // new one if needed
         async fn connect_device(s: &Webex, device: DeviceData) -> Result<WebexEventStream, Error> {
-            let ws_url = match device.ws_url {
-                Some(url) => url,
-                None => return Err("Device has no ws_url".into()),
+            trace!("Attempting connection with device named {:?}", device.name);
+            let Some(ws_url) = device.ws_url else {
+                return Err("Device has no ws_url".into());
             };
             let url = url::Url::parse(ws_url.as_str())
                 .map_err(|_| Error::from("Failed to parse ws_url"))?;
@@ -483,7 +510,15 @@ impl Webex {
         }
 
         // get_devices automatically tries to set up devices if the get fails.
-        let mut devices: Vec<DeviceData> = self.get_devices().await?;
+        // Keep only devices named DEVICE_NAME to avoid conflicts with other clients
+        let mut devices: Vec<DeviceData> = self
+            .get_devices()
+            .await?
+            .iter()
+            .filter(|d| d.name == self.device.name)
+            .inspect(|d| trace!("Kept device: {}", d))
+            .cloned()
+            .collect();
 
         // Sort devices in descending order by modification time, meaning latest created device
         // first.
@@ -495,6 +530,7 @@ impl Webex {
 
         for device in devices {
             if let Ok(event_stream) = connect_device(self, device).await {
+                trace!("Successfully connected to device.");
                 return Ok(event_stream);
             }
         }
@@ -514,7 +550,7 @@ impl Webex {
             .map(|cache| cache.get(&self.id).map(Clone::clone))
         {
             trace!("Found mercury URL in cache!");
-            return result.map_err(|_| None);
+            return result.map_err(|()| None);
         }
 
         let mercury_url = self.get_mercury_url_uncached().await;
@@ -544,7 +580,7 @@ impl Webex {
         let api_url = format!("limited/catalog?format=hostmap&orgId={org_id}");
         let catalogs = self
             .client
-            .api_get::<CatalogReply>(&api_url, Authorization::Bearer(&self.token))
+            .api_get::<CatalogReply>(&api_url, AuthorizationType::Bearer(&self.token))
             .await?;
         let mercury_url = catalogs.service_links.wdm;
 
@@ -607,7 +643,7 @@ impl Webex {
             .iter()
             .map(|endpoint| {
                 self.client
-                    .api_get::<ListResult<Room>>(endpoint, Authorization::Bearer(&self.token))
+                    .api_get::<ListResult<Room>>(endpoint, AuthorizationType::Bearer(&self.token))
             })
             .collect();
         let teams_rooms = try_join_all(futures).await?;
@@ -654,7 +690,37 @@ impl Webex {
                     media_type: "application/json",
                     content: serde_json::to_string(&message)?,
                 },
-                Authorization::Bearer(&self.token),
+                AuthorizationType::Bearer(&self.token),
+            )
+            .await
+    }
+
+    /// Edit an existing message
+    ///
+    /// # Arguments
+    /// * `params`: [`MessageEditParams`] - the message to edit, including the message ID and the room ID,
+    /// as well as the new message text.
+    ///
+    /// # Errors
+    /// Types of errors returned:
+    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// value cannot be deserialised. (If this happens, this is a library bug and should be reported).
+    pub async fn edit_message(
+        &self,
+        message_id: &GlobalId,
+        params: &MessageEditParams<'_>,
+    ) -> Result<Message, Error> {
+        let rest_method = format!("messages/{}", message_id.id());
+        self.client
+            .api_put(
+                &rest_method,
+                RequestBody {
+                    media_type: "application/json",
+                    content: serde_json::to_string(&params)?,
+                },
+                AuthorizationType::Bearer(&self.token),
             )
             .await
     }
@@ -670,7 +736,7 @@ impl Webex {
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
-            .api_get::<T>(rest_method.as_str(), Authorization::Bearer(&self.token))
+            .api_get::<T>(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
             .await
             .chain_err(|| {
                 format!(
@@ -685,7 +751,7 @@ impl Webex {
     pub async fn delete<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<(), Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
-            .api_delete(rest_method.as_str(), Authorization::Bearer(&self.token))
+            .api_delete(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
             .await
             .chain_err(|| {
                 format!(
@@ -699,17 +765,33 @@ impl Webex {
     /// List resources of a type
     pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
         self.client
-            .api_get::<ListResult<T>>(T::API_ENDPOINT, Authorization::Bearer(&self.token))
+            .api_get::<ListResult<T>>(T::API_ENDPOINT, AuthorizationType::Bearer(&self.token))
+            .await
+            .map(|result| result.items)
+            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
+    }
+
+    /// List resources of a type, with parameters
+    pub async fn list_with_params<T: Gettable + DeserializeOwned>(
+        &self,
+        list_params: T::ListParams<'_>,
+    ) -> Result<Vec<T>, Error> {
+        let rest_method = format!(
+            "{}?{}",
+            T::API_ENDPOINT,
+            serde_html_form::to_string(list_params)?
+        );
+        self.client
+            .api_get::<ListResult<T>>(&rest_method, AuthorizationType::Bearer(&self.token))
             .await
             .map(|result| result.items)
             .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
     }
 
     async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
-        // https://developer.webex.com/docs/api/v1/devices
         match self
             .client
-            .api_get::<DevicesReply>("devices", Authorization::Bearer(&self.token))
+            .api_get::<DevicesReply>("devices", AuthorizationType::Bearer(&self.token))
             .await
         {
             #[rustfmt::skip]
@@ -734,6 +816,7 @@ impl Webex {
     }
 
     async fn setup_devices(&self) -> Result<DeviceData, Error> {
+        trace!("Setting up new device: {}", &self.device);
         self.client
             .api_post(
                 "devices",
@@ -741,7 +824,7 @@ impl Webex {
                     media_type: "application/json",
                     content: serde_json::to_string(&self.device)?,
                 },
-                Authorization::Bearer(&self.token),
+                AuthorizationType::Bearer(&self.token),
             )
             .await
     }
@@ -778,13 +861,15 @@ impl Message {
     /// Contrast with [`MessageOut::from()`] which only replies in the same room.
     #[must_use]
     pub fn reply(&self) -> MessageOut {
-        let mut msg = MessageOut::from(self);
-        msg.parent_id = self
-            .parent_id
-            .as_deref()
-            .or(self.id.as_deref())
-            .map(ToOwned::to_owned);
-        msg
+        MessageOut {
+            room_id: self.room_id.clone(),
+            parent_id: self
+                .parent_id
+                .as_deref()
+                .or(self.id.as_deref())
+                .map(ToOwned::to_owned),
+            ..Default::default()
+        }
     }
 }
 
