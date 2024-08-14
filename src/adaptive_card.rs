@@ -12,7 +12,7 @@ use std::collections::HashMap;
 /// Adaptive Card structure for message attachment
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct AdaptiveCard {
-    /// Must be "AdaptiveCard"
+    /// Must be "`AdaptiveCard`"
     #[serde(rename = "type")]
     pub card_type: String,
     /// Schema version that this card requires. If a client is lower than this version, the fallbackText will be rendered.
@@ -148,11 +148,11 @@ pub enum CardElement {
         spacing: Option<Spacing>,
     },
 
-    /// ColumnSet divides a region into Columns, allowing elements to sit side-by-side.
+    /// `ColumnSet` divides a region into Columns, allowing elements to sit side-by-side.
     ColumnSet {
         /// The array of Columns to divide the region into.
         columns: Vec<Column>,
-        /// An Action that will be invoked when the ColumnSet is tapped or selected.
+        /// An Action that will be invoked when the `ColumnSet` is tapped or selected.
         #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
         select_action: Option<Action>,
         /// A unique identifier associated with the item.
@@ -166,7 +166,7 @@ pub enum CardElement {
         spacing: Option<Spacing>,
     },
 
-    /// The FactSet element displays a series of facts (i.e. name/value pairs) in a tabular form.
+    /// The `FactSet` element displays a series of facts (i.e. name/value pairs) in a tabular form.
     FactSet {
         /// The array of Fact‘s.
         facts: Vec<Fact>,
@@ -184,7 +184,7 @@ pub enum CardElement {
         spacing: Option<Spacing>,
     },
 
-    /// The ImageSet displays a collection of Images similar to a gallery.
+    /// The `ImageSet` displays a collection of Images similar to a gallery.
     ImageSet {
         /// The array of Image elements to show.
         images: Vec<CardElement>,
@@ -212,7 +212,7 @@ pub enum CardElement {
         /// If true, allow text to wrap. Otherwise, text is clipped.
         #[serde(skip_serializing_if = "Option::is_none")]
         wrap: Option<bool>,
-        /// Controls the color of TextBlock elements.
+        /// Controls the color of `TextBlock` elements.
         #[serde(skip_serializing_if = "Option::is_none")]
         color: Option<Color>,
         /// Controls the horizontal text alignment.
@@ -233,7 +233,7 @@ pub enum CardElement {
         /// Controls size of text.
         #[serde(skip_serializing_if = "Option::is_none")]
         size: Option<Size>,
-        /// Controls the weight of TextBlock elements.
+        /// Controls the weight of `TextBlock` elements.
         #[serde(skip_serializing_if = "Option::is_none")]
         weight: Option<Weight>,
         /// Specifies the height of the element.
@@ -1055,7 +1055,7 @@ pub enum HorizontalAlignment {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type")]
 pub enum Action {
-    /// Gathers input fields, merges with optional data field, and sends an event to the client. It is up to the client to determine how this data is processed. For example: With BotFramework bots, the client would send an activity through the messaging medium to the bot.
+    /// Gathers input fields, merges with optional data field, and sends an event to the client. It is up to the client to determine how this data is processed. For example: With `BotFramework` bots, the client would send an activity through the messaging medium to the bot.
     #[serde(rename = "Action.Submit")]
     Submit {
         /// Initial data that input fields will be combined with. These are essentially ‘hidden’ properties.
@@ -1080,7 +1080,7 @@ pub enum Action {
         #[serde(skip_serializing_if = "Option::is_none")]
         style: Option<ActionStyle>,
     },
-    /// Defines an AdaptiveCard which is shown to the user when the button or link is clicked.
+    /// Defines an `AdaptiveCard` which is shown to the user when the button or link is clicked.
     #[serde(rename = "Action.ShowCard")]
     ShowCard {
         /// The Adaptive Card to show.
@@ -1112,6 +1112,6 @@ pub enum ActionStyle {
 pub struct Choice {
     /// Text to display.
     pub title: String,
-    /// The raw value for the choice. **NOTE:** do not use a , in the value, since a ChoiceSet with isMultiSelect set to true returns a comma-delimited string of choice values.
+    /// The raw value for the choice. **NOTE:** do not use a , in the value, since a `ChoiceSet` with isMultiSelect set to true returns a comma-delimited string of choice values.
     pub value: String,
 }

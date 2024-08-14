@@ -114,7 +114,7 @@ pub struct Webex {
 pub struct WebexEventStream {
     ws_stream: WStream,
     timeout: Duration,
-    /// Signifies if WebStream is Open
+    /// Signifies if `WebStream` is Open
     pub is_open: bool,
 }
 
@@ -158,9 +158,7 @@ impl WebexEventStream {
                             return Err(msg.unwrap_err().to_string().into());
                         }
                         Err(e) => {
-                            return Err(
-                                Error::Tungstenite(e, "Error getting next_result".into()).into()
-                            )
+                            return Err(Error::Tungstenite(e, "Error getting next_result".into()))
                         }
                     },
                 },
@@ -191,7 +189,7 @@ impl WebexEventStream {
             TMessage::Close(t) => {
                 debug!("close: {:?}", t);
                 self.is_open = false;
-                Err(Error::Closed("Web Socket Closed".to_string()).into())
+                Err(Error::Closed("Web Socket Closed".to_string()))
             }
             TMessage::Pong(_) => {
                 debug!("Pong!");
@@ -232,9 +230,10 @@ impl WebexEventStream {
                     None => Err("Websocket closed".to_string().into()),
                 }
             }
-            Err(e) => {
-                Err(Error::Tungstenite(e, "failed to send authentication".to_string()).into())
-            }
+            Err(e) => Err(Error::Tungstenite(
+                e,
+                "failed to send authentication".to_string(),
+            )),
         }
     }
 }
@@ -408,11 +407,9 @@ impl RestClient {
                             http_method, prefix, rest_method_trimmed
                         );
                         debug!("Retry-After: {:?}", retry_after);
-                        Err(Error::Limited(resp.status(), retry_after).into())
+                        Err(Error::Limited(resp.status(), retry_after))
                     }
-                    status if !status.is_success() => {
-                        Err(Error::StatusText(resp.status(), reply).into())
-                    }
+                    status if !status.is_success() => Err(Error::StatusText(resp.status(), reply)),
                     _ => Ok(reply),
                 }
             }
@@ -512,7 +509,10 @@ impl Webex {
                 }
                 Err(e) => {
                     warn!("Failed to connect to {:?}: {:?}", url, e);
-                    Err(Error::Tungstenite(e, "Failed to connect to ws_url".to_string()).into())
+                    Err(Error::Tungstenite(
+                        e,
+                        "Failed to connect to ws_url".to_string(),
+                    ))
                 }
             }
         }
@@ -555,7 +555,7 @@ impl Webex {
         }
         if let Ok(Some(result)) = MERCURY_CACHE
             .lock()
-            .map(|cache| cache.get(&self.id).map(Clone::clone))
+            .map(|cache| cache.get(&self.id).cloned())
         {
             trace!("Found mercury URL in cache!");
             return result.map_err(|()| None);
@@ -680,15 +680,15 @@ impl Webex {
     ///
     /// # Arguments
     /// * `message`: [`MessageOut`] - the message to send, including one of `room_id`,
-    /// `to_person_id` or `to_person_email`.
+    ///   `to_person_id` or `to_person_email`.
     ///
     /// # Errors
     /// Types of errors returned:
     /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
     /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
     /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
-    /// value cannot be deserialised. (If this happens, this is a library bug and should be
-    /// reported.)
+    ///   value cannot be deserialised. (If this happens, this is a library bug and should be
+    ///   reported.)
     /// * [`Error::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn send_message(&self, message: &MessageOut) -> Result<Message, Error> {
         self.client
@@ -707,14 +707,14 @@ impl Webex {
     ///
     /// # Arguments
     /// * `params`: [`MessageEditParams`] - the message to edit, including the message ID and the room ID,
-    /// as well as the new message text.
+    ///   as well as the new message text.
     ///
     /// # Errors
     /// Types of errors returned:
     /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
     /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
     /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
-    /// value cannot be deserialised. (If this happens, this is a library bug and should be reported).
+    ///   value cannot be deserialised. (If this happens, this is a library bug and should be reported).
     pub async fn edit_message(
         &self,
         message_id: &GlobalId,
@@ -738,8 +738,8 @@ impl Webex {
     /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
     /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
     /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
-    /// value cannot be deserialised. (If this happens, this is a library bug and should be
-    /// reported.)
+    ///   value cannot be deserialised. (If this happens, this is a library bug and should be
+    ///   reported.)
     /// * [`Error::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
@@ -836,11 +836,11 @@ impl From<&Message> for MessageOut {
         let mut new_msg = Self::default();
 
         if msg.room_type == Some(RoomType::Group) {
-            new_msg.room_id = msg.room_id.clone();
-        } else if let Some(person_id) = &msg.person_id {
-            new_msg.to_person_id = Some(person_id.clone());
+            new_msg.room_id.clone_from(&msg.room_id);
+        } else if let Some(_person_id) = &msg.person_id {
+            new_msg.to_person_id.clone_from(&msg.person_id);
         } else {
-            new_msg.to_person_email = msg.person_email.clone();
+            new_msg.to_person_email.clone_from(&msg.person_email);
         }
 
         new_msg

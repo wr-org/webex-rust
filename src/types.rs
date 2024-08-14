@@ -680,11 +680,11 @@ impl Event {
     }
 
     fn target_global_id(activity: &Activity) -> Result<String, error::Error> {
-        Ok(activity
+        activity
             .target
             .clone()
             .and_then(|t| t.global_id)
-            .ok_or(crate::error::Error::Api("Missing target id in activity"))?)
+            .ok_or(crate::error::Error::Api("Missing target id in activity"))
     }
 
     /// Get the UUID of the room the Space created event corresponds to.
@@ -721,10 +721,9 @@ impl Event {
             uuid.replace_range(7..8, "0");
             Ok(uuid)
         } else {
-            Err(
-                crate::error::Error::Api("Space created event uuid could not be not patched")
-                    .into(),
-            )
+            Err(crate::error::Error::Api(
+                "Space created event uuid could not be not patched",
+            ))
         }
     }
 }
@@ -733,7 +732,7 @@ impl Event {
 /// being used for a room ID.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GlobalIdType {
-    /// This GlobalId represents the ID of a message
+    /// This `GlobalId` represents the ID of a message
     Message,
     /// Corresponds to the ID of a person
     Person,
@@ -743,8 +742,8 @@ pub enum GlobalIdType {
     Team,
     /// Retrieves a specific attachment
     AttachmentAction,
-    /// This GlobalId represents the ID of something not currently recognised, any API requests
-    /// with this GlobalId will produce an error.
+    /// This `GlobalId` represents the ID of something not currently recognised, any API requests
+    /// with this `GlobalId` will produce an error.
     Unknown,
 }
 impl From<ActivityType> for GlobalIdType {
@@ -809,14 +808,14 @@ impl GlobalId {
     /// * ``type_: GlobalIdType`` - the type of the ID being constructed
     /// * ``id: String`` - the ID, either old (UUID) or new (base64 geo-ID)
     /// * ``cluster: Option<&str>`` - cluster for geo-ID. Only used if the ID is an old-style UUID.
+    ///
     /// Will default to `"us"` if not given and can't be determined from the ID - this should work
     /// for most requests.
     ///
     /// # Errors
     /// * ``Error::Msg`` if:
     ///   * the ID type is ``GlobalIdType::Unknown``.
-    ///   * the ID is a base64 geo-ID that does not follow the format
-    ///   ``ciscospark://[cluster]/[type]/[id]``.
+    ///   * the ID is a base64 geo-ID that does not follow the format ``ciscospark://[cluster]/[type]/[id]``.
     ///   * the ID is a base64 geo-ID and the type does not match the given type.
     ///   * the ID is a base64 geo-ID and the cluster does not match the given cluster.
     ///   * the ID is neither a UUID or a base64 geo-id.
@@ -1054,10 +1053,10 @@ pub struct Person {
     ///
     /// active - active within the last 10 minutes
     /// call - the user is in a call
-    /// DoNotDisturb - the user has manually set their status to "Do Not Disturb"
+    /// `DoNotDisturb` - the user has manually set their status to "Do Not Disturb"
     /// inactive - last activity occurred more than 10 minutes ago
     /// meeting - the user is in a meeting
-    /// OutOfOffice - the user or a Hybrid Calendar service has indicated that they are "Out of Office"
+    /// `OutOfOffice` - the user or a Hybrid Calendar service has indicated that they are "Out of Office"
     /// pending - the user has never logged in; a status cannot be determined
     /// presenting - the user is sharing content
     /// unknown - the user’s status could not be determined
