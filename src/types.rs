@@ -1168,10 +1168,7 @@ mod tests {
             id: "bogus".to_string(),
             ..Default::default()
         });
-        assert_eq!(
-            event.room_id_of_space_created_event().unwrap(),
-            "assumed_valid_base64"
-        );
+        assert_eq!(event.room_id_of_space_created_event().unwrap(), "bogus");
         // unpatcheable UUID should fail
         event.data.activity = Some(Activity {
             verb: "create".to_string(),
