@@ -17,7 +17,6 @@ repository = "https://github.com/wr-org/webex-rust"
 [dependencies]
 async-std = "1.12"
 base64 = "0.21.7"
-error-chain = "0.12.4"
 futures = "0.3.30"
 futures-util = "0.3.30"
 hyper = { version = "0.14", features = ["client", "http1"] }
@@ -30,6 +29,7 @@ url = "2.5"
 lazy_static = "1.5.0"
 serde_html_form = "0.2.6"
 serde_with = { version = "3.9.0", features = ["macros"] }
+thiserror = "1.0.63"
 
 [dependencies.chrono]
 version = "0.4"

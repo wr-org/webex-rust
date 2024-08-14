@@ -1,46 +1,48 @@
-use hyper::{Error as HyperError, StatusCode};
-use serde_html_form::ser::Error as SerdeHtmlError;
-use serde_json::error::Error as SerdeError;
+use hyper::StatusCode;
 
-error_chain! {
-    foreign_links {
-        Io(std::io::Error);
-        Json(SerdeError);
-        FormEncoding(SerdeHtmlError);
-        UTF8(std::str::Utf8Error);
-        Hyper(HyperError);
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    // Foreign errors
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::error::Error),
+    #[error("URL form encoding error: {0}")]
+    FormEncoding(#[from] serde_html_form::ser::Error),
+    #[error("UTF8 error: {0}")]
+    UTF8(#[from] std::str::Utf8Error),
+    #[error("Hyper error: {0}")]
+    Hyper(#[from] hyper::Error),
+
+    // WS/request errors
+    #[error("Connection was closed: {0}")]
+    Closed(String),
+    #[error("HTTP Status: '{0}'")]
+    Status(StatusCode),
+    #[error("HTTP Status: '{0}' Message: {1}")]
+    StatusText(StatusCode, String),
+    #[error("{0} Retry in: '{1:?}'")]
+    Limited(StatusCode, Option<i64>),
+    #[error("{0} {1}")]
+    Tungstenite(tokio_tungstenite::tungstenite::Error, String),
+    #[error("Webex API changed: {0}")]
+    Api(&'static str),
+
+    #[error("Authentication error")]
+    Authentication,
+
+    // catch-all
+    #[error("Unknown error: {0}")]
+    Other(String),
+}
+
+impl From<String> for Error {
+    fn from(s: String) -> Self {
+        Error::Other(s)
     }
-    errors {
-        Closed(m: String) {
-            description("Connection was closed")
-            display("The connection was closed: {}", m)
-        }
-
-        Status(s: StatusCode) {
-            description("HTTP Status Code")
-            display("HTTP Status: '{}'", s)
-        }
-
-        StatusText(s: StatusCode, m: String) {
-            description("HTTP Status Code")
-            display("HTTP Status: '{}' Message: {}", s, m)
-        }
-
-        Limited(s: StatusCode, t: Option<i64>) {
-            description("Reached API Limits")
-            display("{} Retry in: '{:?}'", s, t)
-        }
-
-        Tungstenite(e: tokio_tungstenite::tungstenite::Error, t: String) {
-            description("Failed WS")
-            display("{} {}", e, t)
-        }
-
-        Api(s: &'static str) {
-            description("The Webex API has changed, breaking the library's assumptions. This should be resolved in the next library update.")
-            display("API changed: {}", s)
-        }
-
-        Authentication
+}
+impl From<&str> for Error {
+    fn from(s: &str) -> Self {
+        Error::Other(s.to_string())
     }
 }

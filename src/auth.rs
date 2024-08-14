@@ -117,14 +117,14 @@ impl DeviceAuthenticator {
                 .await
             {
                 Ok(token) => return Ok(token.access_token),
-                Err(e) => match e.kind() {
-                    crate::error::ErrorKind::StatusText(http_status, _) => {
-                        if *http_status != StatusCode::PRECONDITION_REQUIRED {
-                            return Err(crate::ErrorKind::Authentication.into());
+                Err(e) => match e {
+                    crate::error::Error::StatusText(http_status, _) => {
+                        if http_status != StatusCode::PRECONDITION_REQUIRED {
+                            return Err(crate::Error::Authentication);
                         }
                     }
                     _ => {
-                        return Err(crate::ErrorKind::Authentication.into());
+                        return Err(crate::Error::Authentication);
                     }
                 },
             }

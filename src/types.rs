@@ -1,7 +1,7 @@
 #![deny(missing_docs)]
 //! Basic types for Webex Teams APIs
 
-use crate::{adaptive_card::AdaptiveCard, error, error::ResultExt};
+use crate::{adaptive_card::AdaptiveCard, error};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
@@ -663,7 +663,7 @@ impl Event {
             .data
             .activity
             .as_ref()
-            .ok_or(crate::error::ErrorKind::Api("Missing activity in event"))?;
+            .ok_or(crate::error::Error::Api("Missing activity in event"))?;
         let id = match self.activity_type() {
             ActivityType::Space(SpaceActivity::Created) => self.room_id_of_space_created_event()?,
             ActivityType::Space(
@@ -680,9 +680,11 @@ impl Event {
     }
 
     fn target_global_id(activity: &Activity) -> Result<String, error::Error> {
-        Ok(activity.target.clone().and_then(|t| t.global_id).ok_or(
-            crate::error::ErrorKind::Api("Missing target id in activity"),
-        )?)
+        Ok(activity
+            .target
+            .clone()
+            .and_then(|t| t.global_id)
+            .ok_or(crate::error::Error::Api("Missing target id in activity"))?)
     }
 
     /// Get the UUID of the room the Space created event corresponds to.
@@ -702,7 +704,7 @@ impl Event {
             .data
             .activity
             .clone()
-            .ok_or(crate::error::ErrorKind::Api(
+            .ok_or(crate::error::Error::Api(
                 "Missing activity in space created event",
             ))?
             .id;
@@ -720,7 +722,7 @@ impl Event {
             Ok(uuid)
         } else {
             Err(
-                crate::error::ErrorKind::Api("Space created event uuid could not be not patched")
+                crate::error::Error::Api("Space created event uuid could not be not patched")
                     .into(),
             )
         }
@@ -811,7 +813,7 @@ impl GlobalId {
     /// for most requests.
     ///
     /// # Errors
-    /// * ``ErrorKind::Msg`` if:
+    /// * ``Error::Msg`` if:
     ///   * the ID type is ``GlobalIdType::Unknown``.
     ///   * the ID is a base64 geo-ID that does not follow the format
     ///   ``ciscospark://[cluster]/[type]/[id]``.
@@ -827,8 +829,7 @@ impl GlobalId {
             return Err("Cannot get globalId for unknown ID type".into());
         }
         if let Ok(decoded_id) = base64::engine::general_purpose::STANDARD_NO_PAD.decode(&id) {
-            let decoded_id = std::str::from_utf8(&decoded_id)
-                .chain_err(|| "Failed to turn base64 id into UTF8 string")?;
+            let decoded_id = std::str::from_utf8(&decoded_id)?;
             Self::check_id(decoded_id, cluster, &type_.to_string())?;
         } else if Uuid::parse_str(&id).is_err() {
             return Err("Expected ID to be base64 geo-id or uuid".into());

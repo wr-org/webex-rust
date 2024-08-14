@@ -33,8 +33,6 @@
 //! author is a current developer at Cisco, but has no direct affiliation
 //! with the Webex development team.
 
-#[macro_use]
-extern crate error_chain;
 extern crate lazy_static;
 
 pub mod adaptive_card;
@@ -44,7 +42,7 @@ pub mod types;
 pub use types::*;
 pub mod auth;
 
-use error::{Error, ErrorKind, ResultExt};
+use error::Error;
 
 use crate::adaptive_card::AdaptiveCard;
 use base64::{engine::general_purpose as bas64enc, Engine as _};
@@ -152,11 +150,9 @@ impl WebexEventStream {
                             return Err(msg.unwrap_err().to_string().into());
                         }
                         Err(e) => {
-                            return Err(ErrorKind::Tungstenite(
-                                e,
-                                "Error getting next_result".into(),
+                            return Err(
+                                Error::Tungstenite(e, "Error getting next_result".into()).into()
                             )
-                            .into())
                         }
                     },
                 },
@@ -187,7 +183,7 @@ impl WebexEventStream {
             TMessage::Close(t) => {
                 debug!("close: {:?}", t);
                 self.is_open = false;
-                Err(ErrorKind::Closed("Web Socket Closed".to_string()).into())
+                Err(Error::Closed("Web Socket Closed".to_string()).into())
             }
             TMessage::Pong(_) => {
                 debug!("Pong!");
@@ -229,7 +225,7 @@ impl WebexEventStream {
                 }
             }
             Err(e) => {
-                Err(ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
+                Err(Error::Tungstenite(e, "failed to send authentication".to_string()).into())
             }
         }
     }
@@ -337,7 +333,7 @@ impl RestClient {
         serde_json::from_str(reply_str).map_err(|e| {
             error!("Couldn't parse reply for {} call: {:#?}", rest_method, e);
             trace!("Source JSON: `{}`", reply_str);
-            Error::with_chain(e, "failed to parse reply")
+            e.into()
         })
     }
 
@@ -401,15 +397,15 @@ impl RestClient {
                             http_method, prefix, rest_method_trimmed
                         );
                         debug!("Retry-After: {:?}", retry_after);
-                        Err(ErrorKind::Limited(resp.status(), retry_after).into())
+                        Err(Error::Limited(resp.status(), retry_after).into())
                     }
                     status if !status.is_success() => {
-                        Err(ErrorKind::StatusText(resp.status(), reply).into())
+                        Err(Error::StatusText(resp.status(), reply).into())
                     }
                     _ => Ok(reply),
                 }
             }
-            Err(e) => Err(Error::with_chain(e, "request failed")),
+            Err(e) => Err(e.into()),
         }
     }
 }
@@ -504,7 +500,7 @@ impl Webex {
                 }
                 Err(e) => {
                     warn!("Failed to connect to {:?}: {:?}", url, e);
-                    Err(ErrorKind::Tungstenite(e, "Failed to connect to ws_url".to_string()).into())
+                    Err(Error::Tungstenite(e, "Failed to connect to ws_url".to_string()).into())
                 }
             }
         }
@@ -676,12 +672,12 @@ impl Webex {
     ///
     /// # Errors
     /// Types of errors returned:
-    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
-    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
-    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
     /// value cannot be deserialised. (If this happens, this is a library bug and should be
     /// reported.)
-    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
+    /// * [`Error::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn send_message(&self, message: &MessageOut) -> Result<Message, Error> {
         self.client
             .api_post(
@@ -703,9 +699,9 @@ impl Webex {
     ///
     /// # Errors
     /// Types of errors returned:
-    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
-    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
-    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
     /// value cannot be deserialised. (If this happens, this is a library bug and should be reported).
     pub async fn edit_message(
         &self,
@@ -727,24 +723,17 @@ impl Webex {
 
     /// Get a resource from an ID
     /// # Errors
-    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
-    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
-    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
+    /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
     /// value cannot be deserialised. (If this happens, this is a library bug and should be
     /// reported.)
-    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
+    /// * [`Error::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
             .api_get::<T>(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
             .await
-            .chain_err(|| {
-                format!(
-                    "Failed to get {} with id {:?}",
-                    std::any::type_name::<T>(),
-                    id
-                )
-            })
     }
 
     /// Delete a resource from an ID
@@ -753,13 +742,6 @@ impl Webex {
         self.client
             .api_delete(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
             .await
-            .chain_err(|| {
-                format!(
-                    "Failed to delete {} with id {:?}",
-                    std::any::type_name::<T>(),
-                    id
-                )
-            })
     }
 
     /// List resources of a type
@@ -768,7 +750,6 @@ impl Webex {
             .api_get::<ListResult<T>>(T::API_ENDPOINT, AuthorizationType::Bearer(&self.token))
             .await
             .map(|result| result.items)
-            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
     }
 
     /// List resources of a type, with parameters
@@ -785,7 +766,6 @@ impl Webex {
             .api_get::<ListResult<T>>(&rest_method, AuthorizationType::Bearer(&self.token))
             .await
             .map(|result| result.items)
-            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
     }
 
     async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
@@ -801,15 +781,15 @@ impl Webex {
                 self.setup_devices().await.map(|device| vec![device])
             }
             Err(e) => match e {
-                Error(ErrorKind::Status(s) | ErrorKind::StatusText(s, _), _) => {
+                Error::Status(s) | Error::StatusText(s, _) => {
                     if s == hyper::StatusCode::NOT_FOUND {
                         debug!("No devices found, creating new one");
                         self.setup_devices().await.map(|device| vec![device])
                     } else {
-                        Err(Error::with_chain(e, "Can't decode devices reply"))
+                        Err(e)
                     }
                 }
-                Error(ErrorKind::Limited(_, _), _) => Err(e),
+                Error::Limited(_, _) => Err(e),
                 _ => Err(format!("Can't decode devices reply: {e}").into()),
             },
         }
