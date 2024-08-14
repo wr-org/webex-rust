@@ -41,14 +41,16 @@ pub mod error;
 pub mod types;
 pub use types::*;
 pub mod auth;
+pub mod utils;
 
 use error::Error;
 
 use crate::adaptive_card::AdaptiveCard;
+use crate::utils::serialize_to_body;
 use base64::{engine::general_purpose as bas64enc, Engine as _};
 use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
-use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
+use hyper::Request;
 use hyper_tls::HttpsConnector;
 use log::{debug, error, trace, warn};
 use serde::de::DeserializeOwned;
@@ -64,6 +66,11 @@ use tokio_tungstenite::{
     tungstenite::{Error as TErr, Message as TMessage},
     MaybeTlsStream, WebSocketStream,
 };
+
+// TODO: proper upgrade to hyper v1 - would be nice to rework things that use these
+use http_body_util::combinators::BoxBody;
+use http_body_util::BodyExt;
+use hyper_util::client::legacy::{connect::HttpConnector, Client};
 
 /*
  * URLs:
@@ -89,6 +96,7 @@ const DEVICE_SYSTEM_NAME: &str = "rust-spark-client";
 
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type Body = BoxBody<hyper::body::Bytes, Error>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 /// Webex API Client
@@ -259,7 +267,8 @@ impl RestClient {
     /// Creates a new `RestClient`
     pub fn new() -> Self {
         let https = HttpsConnector::new();
-        let web_client = Client::builder().build::<_, hyper::Body>(https);
+        let web_client =
+            Client::builder(hyper_util::rt::TokioExecutor::new()).build::<_, Body>(https);
         Self {
             host_prefix: HashMap::new(),
             web_client,
@@ -276,8 +285,7 @@ impl RestClient {
         rest_method: &str,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
-        let body: Option<RequestBody<String>> = None;
-        self.rest_api("GET", rest_method, body, auth).await
+        self.rest_api("GET", rest_method, None, auth).await
     }
 
     async fn api_delete<'a>(
@@ -285,8 +293,7 @@ impl RestClient {
         rest_method: &str,
         auth: AuthorizationType<'a>,
     ) -> Result<(), Error> {
-        let body: Option<RequestBody<String>> = None;
-        self.rest_api("DELETE", rest_method, body, auth).await
+        self.rest_api("DELETE", rest_method, None, auth).await
     }
 
     async fn api_post<'a, T: DeserializeOwned, U: Send>(
@@ -368,20 +375,24 @@ impl RestClient {
         .method(http_method)
         .uri(url);
         let body = match body {
-            None => Body::empty(),
             Some(request_body) => {
                 builder = builder.header("Content-Type", request_body.media_type);
                 Body::from(request_body.content)
             }
+            None => http_body_util::Empty::new()
+                .map_err(|_| unreachable!())
+                .boxed(),
         };
         let req = builder.body(body).expect("request builder");
         match self.web_client.request(req).await {
             Ok(mut resp) => {
                 let mut reply = String::new();
-                while let Some(chunk) = resp.body_mut().data().await {
+                while let Some(chunk) = resp.body_mut().frame().await {
                     use std::str;
 
-                    let chunk = chunk?;
+                    let Ok(chunk) = chunk?.into_data() else {
+                        continue;
+                    };
                     let strchunk = str::from_utf8(&chunk)?;
                     reply.push_str(strchunk);
                 }
@@ -422,7 +433,8 @@ impl Webex {
     /// The name is used to identify the device/client with Webex api
     pub async fn new_with_device_name(device_name: &str, token: &str) -> Self {
         let https = HttpsConnector::new();
-        let web_client = Client::builder().build::<_, hyper::Body>(https);
+        let web_client =
+            Client::builder(hyper_util::rt::TokioExecutor::new()).build::<_, Body>(https);
         let mut client: RestClient = RestClient {
             host_prefix: HashMap::new(),
             web_client,
@@ -486,7 +498,7 @@ impl Webex {
             let url = url::Url::parse(ws_url.as_str())
                 .map_err(|_| Error::from("Failed to parse ws_url"))?;
             debug!("Connecting to {:?}", url);
-            match connect_async(url.clone()).await {
+            match connect_async(url.as_str()).await {
                 Ok((mut ws_stream, _response)) => {
                     debug!("Connected to {}", url);
                     WebexEventStream::auth(&mut ws_stream, &s.token).await?;
@@ -684,7 +696,7 @@ impl Webex {
                 "messages",
                 RequestBody {
                     media_type: "application/json",
-                    content: serde_json::to_string(&message)?,
+                    content: serialize_to_body(message)?,
                 },
                 AuthorizationType::Bearer(&self.token),
             )
@@ -714,7 +726,7 @@ impl Webex {
                 &rest_method,
                 RequestBody {
                     media_type: "application/json",
-                    content: serde_json::to_string(&params)?,
+                    content: serialize_to_body(params)?,
                 },
                 AuthorizationType::Bearer(&self.token),
             )
@@ -802,7 +814,7 @@ impl Webex {
                 "devices",
                 RequestBody {
                     media_type: "application/json",
-                    content: serde_json::to_string(&self.device)?,
+                    content: serialize_to_body(&self.device)?,
                 },
                 AuthorizationType::Bearer(&self.token),
             )

@@ -1,6 +1,7 @@
 #![deny(missing_docs)]
 //! Ways to authenticate with the Webex API
 
+use crate::utils::serialize_to_body;
 use crate::{AuthorizationType, RequestBody, RestClient};
 use hyper::StatusCode;
 use serde::Deserialize;
@@ -72,7 +73,7 @@ impl DeviceAuthenticator {
                 "device/authorize",
                 RequestBody {
                     media_type: "application/x-www-form-urlencoded; charset=utf-8",
-                    content: serde_html_form::to_string(params)?,
+                    content: serialize_to_body(params)?,
                 },
                 AuthorizationType::None,
             )
@@ -103,11 +104,11 @@ impl DeviceAuthenticator {
 
             match self
                 .client
-                .api_post::<TokenResponse, String>(
+                .api_post::<TokenResponse, _>(
                     "device/token",
                     RequestBody {
                         media_type: "application/x-www-form-urlencoded; charset=utf-8",
-                        content: serde_html_form::to_string(params)?,
+                        content: serialize_to_body(&params)?,
                     },
                     AuthorizationType::Basic {
                         username: &self.client_id,

@@ -13,6 +13,8 @@ pub enum Error {
     UTF8(#[from] std::str::Utf8Error),
     #[error("Hyper error: {0}")]
     Hyper(#[from] hyper::Error),
+    #[error("Hyper util error: {0}")]
+    HyperUtil(#[from] hyper_util::client::legacy::Error),
 
     // WS/request errors
     #[error("Connection was closed: {0}")]
