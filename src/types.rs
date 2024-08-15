@@ -1161,7 +1161,7 @@ mod tests {
             event.room_id_of_space_created_event().unwrap(),
             "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf"
         );
-        // invalid UUID (assumed base64) should return the event id
+        // invalid UUID (assumed base64) should return itself unmodified
         event.data.activity = Some(Activity {
             verb: "create".to_string(),
             id: "bogus".to_string(),
