@@ -33,8 +33,6 @@
 //! author is a current developer at Cisco, but has no direct affiliation
 //! with the Webex development team.
 
-#[macro_use]
-extern crate error_chain;
 extern crate lazy_static;
 
 pub mod adaptive_card;
@@ -43,17 +41,19 @@ pub mod error;
 pub mod types;
 pub use types::*;
 pub mod auth;
+pub mod utils;
 
-use error::{Error, ErrorKind, ResultExt};
+use error::Error;
 
 use crate::adaptive_card::AdaptiveCard;
+use crate::utils::serialize_to_body;
 use base64::{engine::general_purpose as bas64enc, Engine as _};
 use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
-use hyper::{body::HttpBody, client::HttpConnector, Body, Client, Request};
+use hyper::Request;
 use hyper_tls::HttpsConnector;
 use log::{debug, error, trace, warn};
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     hash::{self, Hasher},
@@ -66,6 +66,11 @@ use tokio_tungstenite::{
     tungstenite::{Error as TErr, Message as TMessage},
     MaybeTlsStream, WebSocketStream,
 };
+
+// TODO: proper upgrade to hyper v1 - would be nice to rework things that use these
+use http_body_util::combinators::BoxBody;
+use http_body_util::BodyExt;
+use hyper_util::client::legacy::{connect::HttpConnector, Client};
 
 /*
  * URLs:
@@ -91,6 +96,7 @@ const DEVICE_SYSTEM_NAME: &str = "rust-spark-client";
 
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type Body = BoxBody<hyper::body::Bytes, Error>;
 type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 /// Webex API Client
@@ -108,7 +114,7 @@ pub struct Webex {
 pub struct WebexEventStream {
     ws_stream: WStream,
     timeout: Duration,
-    /// Signifies if WebStream is Open
+    /// Signifies if `WebStream` is Open
     pub is_open: bool,
 }
 
@@ -152,11 +158,7 @@ impl WebexEventStream {
                             return Err(msg.unwrap_err().to_string().into());
                         }
                         Err(e) => {
-                            return Err(ErrorKind::Tungstenite(
-                                e,
-                                "Error getting next_result".into(),
-                            )
-                            .into())
+                            return Err(Error::Tungstenite(e, "Error getting next_result".into()))
                         }
                     },
                 },
@@ -187,7 +189,7 @@ impl WebexEventStream {
             TMessage::Close(t) => {
                 debug!("close: {:?}", t);
                 self.is_open = false;
-                Err(ErrorKind::Closed("Web Socket Closed".to_string()).into())
+                Err(Error::Closed("Web Socket Closed".to_string()))
             }
             TMessage::Pong(_) => {
                 debug!("Pong!");
@@ -228,9 +230,10 @@ impl WebexEventStream {
                     None => Err("Websocket closed".to_string().into()),
                 }
             }
-            Err(e) => {
-                Err(ErrorKind::Tungstenite(e, "failed to send authentication".to_string()).into())
-            }
+            Err(e) => Err(Error::Tungstenite(
+                e,
+                "failed to send authentication".to_string(),
+            )),
         }
     }
 }
@@ -263,7 +266,8 @@ impl RestClient {
     /// Creates a new `RestClient`
     pub fn new() -> Self {
         let https = HttpsConnector::new();
-        let web_client = Client::builder().build::<_, hyper::Body>(https);
+        let web_client =
+            Client::builder(hyper_util::rt::TokioExecutor::new()).build::<_, Body>(https);
         Self {
             host_prefix: HashMap::new(),
             web_client,
@@ -280,8 +284,15 @@ impl RestClient {
         rest_method: &str,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
-        let body: Option<RequestBody<String>> = None;
-        self.rest_api("GET", rest_method, body, auth).await
+        //self.rest_api("GET", rest_method, None, auth).await
+        self.rest_api_2(
+            reqwest::Method::GET,
+            rest_method,
+            auth,
+            None::<()>,
+            None::<()>,
+        )
+        .await
     }
 
     async fn api_delete<'a>(
@@ -289,8 +300,7 @@ impl RestClient {
         rest_method: &str,
         auth: AuthorizationType<'a>,
     ) -> Result<(), Error> {
-        let body: Option<RequestBody<String>> = None;
-        self.rest_api("DELETE", rest_method, body, auth).await
+        self.rest_api("DELETE", rest_method, None, auth).await
     }
 
     async fn api_post<'a, T: DeserializeOwned, U: Send>(
@@ -317,6 +327,42 @@ impl RestClient {
         self.rest_api("PUT", rest_method, Some(body), auth).await
     }
 
+    #[allow(clippy::all, dead_code, unused, clippy::unused_async)]
+    async fn rest_api_2<D: Serialize, F: Serialize, T: DeserializeOwned>(
+        &self,
+        http_method: reqwest::Method,
+        url: &str,
+        auth: AuthorizationType<'_>,
+        params: Option<F>,
+        body: Option<D>,
+    ) -> Result<T, Error> {
+        let url_trimmed = url.split('?').next().unwrap_or(url);
+        let prefix = self
+            .host_prefix
+            .get(url_trimmed)
+            .map_or(REST_HOST_PREFIX, String::as_str);
+        let url = format!("{prefix}/{url}");
+        let client = reqwest::Client::new();
+        let mut request_builder = client.request(http_method, url);
+        if let Some(body) = body {
+            request_builder = request_builder.json(&body);
+        }
+        if let Some(params) = params {
+            request_builder = request_builder.form(&params);
+        }
+        match auth {
+            AuthorizationType::None => {}
+            AuthorizationType::Bearer(token) => {
+                request_builder = request_builder.bearer_auth(token);
+            }
+            AuthorizationType::Basic { username, password } => {
+                request_builder = request_builder.basic_auth(username, Some(password));
+            }
+        }
+        let res = client.execute(request_builder.build()?).await?;
+        Ok(res.json().await?)
+    }
+
     async fn rest_api<'a, T: DeserializeOwned, U: Send>(
         &self,
         http_method: &str,
@@ -337,7 +383,7 @@ impl RestClient {
         serde_json::from_str(reply_str).map_err(|e| {
             error!("Couldn't parse reply for {} call: {:#?}", rest_method, e);
             trace!("Source JSON: `{}`", reply_str);
-            Error::with_chain(e, "failed to parse reply")
+            e.into()
         })
     }
 
@@ -372,20 +418,24 @@ impl RestClient {
         .method(http_method)
         .uri(url);
         let body = match body {
-            None => Body::empty(),
             Some(request_body) => {
                 builder = builder.header("Content-Type", request_body.media_type);
                 Body::from(request_body.content)
             }
+            None => http_body_util::Empty::new()
+                .map_err(|_| unreachable!())
+                .boxed(),
         };
         let req = builder.body(body).expect("request builder");
         match self.web_client.request(req).await {
             Ok(mut resp) => {
                 let mut reply = String::new();
-                while let Some(chunk) = resp.body_mut().data().await {
+                while let Some(chunk) = resp.body_mut().frame().await {
                     use std::str;
 
-                    let chunk = chunk?;
+                    let Ok(chunk) = chunk?.into_data() else {
+                        continue;
+                    };
                     let strchunk = str::from_utf8(&chunk)?;
                     reply.push_str(strchunk);
                 }
@@ -401,15 +451,13 @@ impl RestClient {
                             http_method, prefix, rest_method_trimmed
                         );
                         debug!("Retry-After: {:?}", retry_after);
-                        Err(ErrorKind::Limited(resp.status(), retry_after).into())
+                        Err(Error::Limited(resp.status(), retry_after))
                     }
-                    status if !status.is_success() => {
-                        Err(ErrorKind::StatusText(resp.status(), reply).into())
-                    }
+                    status if !status.is_success() => Err(Error::StatusText(resp.status(), reply)),
                     _ => Ok(reply),
                 }
             }
-            Err(e) => Err(Error::with_chain(e, "request failed")),
+            Err(e) => Err(e.into()),
         }
     }
 }
@@ -426,7 +474,8 @@ impl Webex {
     /// The name is used to identify the device/client with Webex api
     pub async fn new_with_device_name(device_name: &str, token: &str) -> Self {
         let https = HttpsConnector::new();
-        let web_client = Client::builder().build::<_, hyper::Body>(https);
+        let web_client =
+            Client::builder(hyper_util::rt::TokioExecutor::new()).build::<_, Body>(https);
         let mut client: RestClient = RestClient {
             host_prefix: HashMap::new(),
             web_client,
@@ -490,7 +539,7 @@ impl Webex {
             let url = url::Url::parse(ws_url.as_str())
                 .map_err(|_| Error::from("Failed to parse ws_url"))?;
             debug!("Connecting to {:?}", url);
-            match connect_async(url.clone()).await {
+            match connect_async(url.as_str()).await {
                 Ok((mut ws_stream, _response)) => {
                     debug!("Connected to {}", url);
                     WebexEventStream::auth(&mut ws_stream, &s.token).await?;
@@ -504,7 +553,10 @@ impl Webex {
                 }
                 Err(e) => {
                     warn!("Failed to connect to {:?}: {:?}", url, e);
-                    Err(ErrorKind::Tungstenite(e, "Failed to connect to ws_url".to_string()).into())
+                    Err(Error::Tungstenite(
+                        e,
+                        "Failed to connect to ws_url".to_string(),
+                    ))
                 }
             }
         }
@@ -547,7 +599,7 @@ impl Webex {
         }
         if let Ok(Some(result)) = MERCURY_CACHE
             .lock()
-            .map(|cache| cache.get(&self.id).map(Clone::clone))
+            .map(|cache| cache.get(&self.id).cloned())
         {
             trace!("Found mercury URL in cache!");
             return result.map_err(|()| None);
@@ -672,23 +724,23 @@ impl Webex {
     ///
     /// # Arguments
     /// * `message`: [`MessageOut`] - the message to send, including one of `room_id`,
-    /// `to_person_id` or `to_person_email`.
+    ///   `to_person_id` or `to_person_email`.
     ///
     /// # Errors
     /// Types of errors returned:
-    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
-    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
-    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
-    /// value cannot be deserialised. (If this happens, this is a library bug and should be
-    /// reported.)
-    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
+    /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
+    ///   value cannot be deserialised. (If this happens, this is a library bug and should be
+    ///   reported.)
+    /// * [`Error::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn send_message(&self, message: &MessageOut) -> Result<Message, Error> {
         self.client
             .api_post(
                 "messages",
                 RequestBody {
                     media_type: "application/json",
-                    content: serde_json::to_string(&message)?,
+                    content: serialize_to_body(message)?,
                 },
                 AuthorizationType::Bearer(&self.token),
             )
@@ -699,14 +751,14 @@ impl Webex {
     ///
     /// # Arguments
     /// * `params`: [`MessageEditParams`] - the message to edit, including the message ID and the room ID,
-    /// as well as the new message text.
+    ///   as well as the new message text.
     ///
     /// # Errors
     /// Types of errors returned:
-    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
-    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
-    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
-    /// value cannot be deserialised. (If this happens, this is a library bug and should be reported).
+    /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
+    ///   value cannot be deserialised. (If this happens, this is a library bug and should be reported).
     pub async fn edit_message(
         &self,
         message_id: &GlobalId,
@@ -718,7 +770,7 @@ impl Webex {
                 &rest_method,
                 RequestBody {
                     media_type: "application/json",
-                    content: serde_json::to_string(&params)?,
+                    content: serialize_to_body(params)?,
                 },
                 AuthorizationType::Bearer(&self.token),
             )
@@ -727,24 +779,17 @@ impl Webex {
 
     /// Get a resource from an ID
     /// # Errors
-    /// * [`ErrorKind::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
-    /// * [`ErrorKind::Status`] | [`ErrorKind::StatusText`] - returned when the request results in a non-200 code.
-    /// * [`ErrorKind::Json`] - returned when your input object cannot be serialized, or the return
-    /// value cannot be deserialised. (If this happens, this is a library bug and should be
-    /// reported.)
-    /// * [`ErrorKind::UTF8`] - returned when the request returns non-UTF8 code.
+    /// * [`Error::Limited`] - returned on HTTP 423/429 with an optional Retry-After.
+    /// * [`Error::Status`] | [`Error::StatusText`] - returned when the request results in a non-200 code.
+    /// * [`Error::Json`] - returned when your input object cannot be serialized, or the return
+    ///   value cannot be deserialised. (If this happens, this is a library bug and should be
+    ///   reported.)
+    /// * [`Error::UTF8`] - returned when the request returns non-UTF8 code.
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
             .api_get::<T>(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
             .await
-            .chain_err(|| {
-                format!(
-                    "Failed to get {} with id {:?}",
-                    std::any::type_name::<T>(),
-                    id
-                )
-            })
     }
 
     /// Delete a resource from an ID
@@ -753,13 +798,6 @@ impl Webex {
         self.client
             .api_delete(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
             .await
-            .chain_err(|| {
-                format!(
-                    "Failed to delete {} with id {:?}",
-                    std::any::type_name::<T>(),
-                    id
-                )
-            })
     }
 
     /// List resources of a type
@@ -768,7 +806,6 @@ impl Webex {
             .api_get::<ListResult<T>>(T::API_ENDPOINT, AuthorizationType::Bearer(&self.token))
             .await
             .map(|result| result.items)
-            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
     }
 
     /// List resources of a type, with parameters
@@ -785,7 +822,6 @@ impl Webex {
             .api_get::<ListResult<T>>(&rest_method, AuthorizationType::Bearer(&self.token))
             .await
             .map(|result| result.items)
-            .chain_err(|| format!("Failed to list {}", std::any::type_name::<T>()))
     }
 
     async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
@@ -801,15 +837,15 @@ impl Webex {
                 self.setup_devices().await.map(|device| vec![device])
             }
             Err(e) => match e {
-                Error(ErrorKind::Status(s) | ErrorKind::StatusText(s, _), _) => {
+                Error::Status(s) | Error::StatusText(s, _) => {
                     if s == hyper::StatusCode::NOT_FOUND {
                         debug!("No devices found, creating new one");
                         self.setup_devices().await.map(|device| vec![device])
                     } else {
-                        Err(Error::with_chain(e, "Can't decode devices reply"))
+                        Err(e)
                     }
                 }
-                Error(ErrorKind::Limited(_, _), _) => Err(e),
+                Error::Limited(_, _) => Err(e),
                 _ => Err(format!("Can't decode devices reply: {e}").into()),
             },
         }
@@ -822,7 +858,7 @@ impl Webex {
                 "devices",
                 RequestBody {
                     media_type: "application/json",
-                    content: serde_json::to_string(&self.device)?,
+                    content: serialize_to_body(&self.device)?,
                 },
                 AuthorizationType::Bearer(&self.token),
             )
@@ -844,11 +880,11 @@ impl From<&Message> for MessageOut {
         let mut new_msg = Self::default();
 
         if msg.room_type == Some(RoomType::Group) {
-            new_msg.room_id = msg.room_id.clone();
-        } else if let Some(person_id) = &msg.person_id {
-            new_msg.to_person_id = Some(person_id.clone());
+            new_msg.room_id.clone_from(&msg.room_id);
+        } else if let Some(_person_id) = &msg.person_id {
+            new_msg.to_person_id.clone_from(&msg.person_id);
         } else {
-            new_msg.to_person_email = msg.person_email.clone();
+            new_msg.to_person_email.clone_from(&msg.person_email);
         }
 
         new_msg
