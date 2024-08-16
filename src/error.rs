@@ -16,6 +16,9 @@ pub enum Error {
     #[error("Hyper util error: {0}")]
     HyperUtil(#[from] hyper_util::client::legacy::Error),
 
+    #[error("reqwest error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+
     // WS/request errors
     #[error("Connection was closed: {0}")]
     Closed(String),

@@ -1,10 +1,10 @@
 [package]
 name = "webex"
-version = "0.9.3"
+version = "0.9.4"
 authors = [
-    "Scott Hutton <shutton@pobox.com>",
-    "Milan Stastny <milan@stastnej.ch>",
-    "Abel Shields <abel@uucp.org.uk>",
+  "Scott Hutton <shutton@pobox.com>",
+  "Milan Stastny <milan@stastnej.ch>",
+  "Abel Shields <abel@uucp.org.uk>",
 ]
 edition = "2021"
 description = "Interface to Webex Teams REST and WebSocket APIs"
@@ -32,6 +32,7 @@ serde_with = { version = "3.9.0", features = ["macros"] }
 thiserror = "1.0.63"
 hyper-util = { version = "0.1.7", features = ["client", "http1"] }
 http-body-util = "0.1.2"
+reqwest = { version = "0.12.5", features = ["json"] }
 
 [dependencies.chrono]
 version = "0.4"

@@ -53,7 +53,7 @@ use futures_util::{SinkExt, StreamExt};
 use hyper::Request;
 use hyper_tls::HttpsConnector;
 use log::{debug, error, trace, warn};
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     hash::{self, Hasher},
@@ -284,7 +284,15 @@ impl RestClient {
         rest_method: &str,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
-        self.rest_api("GET", rest_method, None, auth).await
+        //self.rest_api("GET", rest_method, None, auth).await
+        self.rest_api_2(
+            reqwest::Method::GET,
+            rest_method,
+            auth,
+            None::<()>,
+            None::<()>,
+        )
+        .await
     }
 
     async fn api_delete<'a>(
@@ -317,6 +325,42 @@ impl RestClient {
         Body: From<U>,
     {
         self.rest_api("PUT", rest_method, Some(body), auth).await
+    }
+
+    #[allow(clippy::all, dead_code, unused, clippy::unused_async)]
+    async fn rest_api_2<D: Serialize, F: Serialize, T: DeserializeOwned>(
+        &self,
+        http_method: reqwest::Method,
+        url: &str,
+        auth: AuthorizationType<'_>,
+        params: Option<F>,
+        body: Option<D>,
+    ) -> Result<T, Error> {
+        let url_trimmed = url.split('?').next().unwrap_or(url);
+        let prefix = self
+            .host_prefix
+            .get(url_trimmed)
+            .map_or(REST_HOST_PREFIX, String::as_str);
+        let url = format!("{prefix}/{url}");
+        let client = reqwest::Client::new();
+        let mut request_builder = client.request(http_method, url);
+        if let Some(body) = body {
+            request_builder = request_builder.json(&body);
+        }
+        if let Some(params) = params {
+            request_builder = request_builder.form(&params);
+        }
+        match auth {
+            AuthorizationType::None => {}
+            AuthorizationType::Bearer(token) => {
+                request_builder = request_builder.bearer_auth(token);
+            }
+            AuthorizationType::Basic { username, password } => {
+                request_builder = request_builder.basic_auth(username, Some(password));
+            }
+        }
+        let res = client.execute(request_builder.build()?).await?;
+        Ok(res.json().await?)
     }
 
     async fn rest_api<'a, T: DeserializeOwned, U: Send>(
