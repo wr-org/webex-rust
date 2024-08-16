@@ -17,6 +17,7 @@ pub struct AdaptiveCard {
     pub card_type: String,
     /// Schema version that this card requires. If a client is lower than this version, the fallbackText will be rendered.
     /// Maximum version is 1.1
+    #[serde(default = "default_version")] // Workaround for Webex not always providing it :/
     pub version: String,
     /// The card elements to show in the primary card region.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,7 +40,8 @@ pub struct AdaptiveCard {
     /// The Adaptive Card schema.
     /// <http://adaptivecards.io/schemas/adaptive-card.json>
     #[serde(rename = "$schema")]
-    pub schema: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
 }
 
 impl AdaptiveCard {
@@ -55,7 +57,7 @@ impl AdaptiveCard {
             fallback_text: None,
             min_height: None,
             lang: None,
-            schema: "http://adaptivecards.io/schemas/adaptive-card.json".to_string(),
+            schema: Some("http://adaptivecards.io/schemas/adaptive-card.json".to_string()),
         }
     }
 
@@ -949,12 +951,19 @@ pub enum ContainerStyle {
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Spacing {
+    #[serde(alias = "default")]
     Default,
+    #[serde(alias = "none")]
     None,
+    #[serde(alias = "small")]
     Small,
+    #[serde(alias = "medium")]
     Medium,
+    #[serde(alias = "large")]
     Large,
+    #[serde(alias = "extraLarge")]
     ExtraLarge,
+    #[serde(alias = "padding")]
     Padding,
 }
 
@@ -969,6 +978,7 @@ pub enum ChoiceInputStyle {
 /// Vertical alignment of content
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum VerticalContentAlignment {
     Top,
     Center,
@@ -1022,6 +1032,7 @@ pub enum FontType {
 /// Text Size
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Size {
     Default,
     Small,
@@ -1114,4 +1125,8 @@ pub struct Choice {
     pub title: String,
     /// The raw value for the choice. **NOTE:** do not use a , in the value, since a `ChoiceSet` with isMultiSelect set to true returns a comma-delimited string of choice values.
     pub value: String,
+}
+
+fn default_version() -> String {
+    "1.1".to_string()
 }

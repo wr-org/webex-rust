@@ -1,4 +1,4 @@
-use hyper::StatusCode;
+use reqwest::StatusCode;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -11,10 +11,6 @@ pub enum Error {
     FormEncoding(#[from] serde_html_form::ser::Error),
     #[error("UTF8 error: {0}")]
     UTF8(#[from] std::str::Utf8Error),
-    #[error("Hyper error: {0}")]
-    Hyper(#[from] hyper::Error),
-    #[error("Hyper util error: {0}")]
-    HyperUtil(#[from] hyper_util::client::legacy::Error),
 
     #[error("reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
