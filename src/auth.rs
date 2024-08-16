@@ -68,10 +68,10 @@ impl DeviceAuthenticator {
         let params = &[("client_id", self.client_id.as_str()), ("scope", SCOPE)];
         let verification_token = self
             .client
-            .api_post::<VerificationToken>(
+            .api_post_form_urlencoded::<VerificationToken>(
                 "device/authorize",
+                params,
                 None::<()>,
-                Some(params),
                 AuthorizationType::None,
             )
             .await?;
@@ -101,10 +101,10 @@ impl DeviceAuthenticator {
 
             match self
                 .client
-                .api_post::<TokenResponse>(
+                .api_post_form_urlencoded::<TokenResponse>(
                     "device/token",
+                    params,
                     None::<()>,
-                    Some(params),
                     AuthorizationType::Basic {
                         username: &self.client_id,
                         password: &self.client_secret,

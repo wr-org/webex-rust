@@ -263,8 +263,15 @@ impl RestClient {
         params: Option<impl Serialize>,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
-        self.rest_api(reqwest::Method::GET, rest_method, auth, params, None::<()>)
-            .await
+        self.rest_api(
+            reqwest::Method::GET,
+            rest_method,
+            auth,
+            params,
+            None::<()>,
+            None::<()>,
+        )
+        .await
     }
 
     async fn api_delete<'a>(
@@ -279,6 +286,7 @@ impl RestClient {
             auth,
             params,
             None::<()>,
+            None::<()>,
         )
         .await
     }
@@ -291,8 +299,33 @@ impl RestClient {
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error>
 where {
-        self.rest_api(reqwest::Method::POST, rest_method, auth, params, Some(body))
-            .await
+        self.rest_api(
+            reqwest::Method::POST,
+            rest_method,
+            auth,
+            params,
+            Some(body),
+            None::<()>,
+        )
+        .await
+    }
+
+    async fn api_post_form_urlencoded<'a, T: DeserializeOwned>(
+        &self,
+        rest_method: &str,
+        body: impl Serialize,
+        params: Option<impl Serialize>,
+        auth: AuthorizationType<'a>,
+    ) -> Result<T, Error> {
+        self.rest_api(
+            reqwest::Method::POST,
+            rest_method,
+            auth,
+            params,
+            None::<()>,
+            Some(body),
+        )
+        .await
     }
 
     async fn api_put<'a, T: DeserializeOwned>(
@@ -302,17 +335,25 @@ where {
         params: Option<impl Serialize>,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
-        self.rest_api(reqwest::Method::PUT, rest_method, auth, params, Some(body))
-            .await
+        self.rest_api(
+            reqwest::Method::PUT,
+            rest_method,
+            auth,
+            params,
+            Some(body),
+            None::<()>,
+        )
+        .await
     }
 
-    async fn rest_api<D: Serialize, F: Serialize, T: DeserializeOwned>(
+    async fn rest_api<T: DeserializeOwned>(
         &self,
         http_method: reqwest::Method,
         url: &str,
         auth: AuthorizationType<'_>,
-        params: Option<F>,
-        body: Option<D>,
+        params: Option<impl Serialize>,
+        body: Option<impl Serialize>,
+        urlencoded: Option<impl Serialize>,
     ) -> Result<T, Error> {
         let url_trimmed = url.split('?').next().unwrap_or(url);
         let prefix = self
@@ -321,11 +362,14 @@ where {
             .map_or(REST_HOST_PREFIX, String::as_str);
         let url = format!("{prefix}/{url}");
         let mut request_builder = self.web_client.request(http_method, url);
-        if let Some(body) = body {
-            request_builder = request_builder.json(&body);
-        }
         if let Some(params) = params {
             request_builder = request_builder.query(&params);
+        }
+        match (body, urlencoded) {
+            (Some(_), Some(_)) => unreachable!("Cannot have both body and urlencoded"),
+            (Some(body), None) => request_builder = request_builder.json(&body),
+            (None, Some(urlencoded)) => request_builder = request_builder.form(&urlencoded),
+            (None, None) => {}
         }
         match auth {
             AuthorizationType::None => {}
