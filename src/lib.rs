@@ -236,6 +236,15 @@ enum AuthorizationType<'a> {
     },
 }
 
+enum Body<T: Serialize> {
+    Json(T),
+    UrlEncoded(T),
+}
+
+const fn body_none() -> Option<Body<()>> {
+    None
+}
+
 /// Implements low level REST requests to be used internally by the library
 #[derive(Clone)]
 struct RestClient {
@@ -263,15 +272,8 @@ impl RestClient {
         params: Option<impl Serialize>,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
-        self.rest_api(
-            reqwest::Method::GET,
-            rest_method,
-            auth,
-            params,
-            None::<()>,
-            None::<()>,
-        )
-        .await
+        self.rest_api(reqwest::Method::GET, rest_method, auth, params, body_none())
+            .await
     }
 
     async fn api_delete<'a>(
@@ -285,8 +287,7 @@ impl RestClient {
             rest_method,
             auth,
             params,
-            None::<()>,
-            None::<()>,
+            body_none(),
         )
         .await
     }
@@ -304,8 +305,7 @@ where {
             rest_method,
             auth,
             params,
-            Some(body),
-            None::<()>,
+            Some(Body::Json(body)),
         )
         .await
     }
@@ -322,8 +322,7 @@ where {
             rest_method,
             auth,
             params,
-            None::<()>,
-            Some(body),
+            Some(Body::UrlEncoded(body)),
         )
         .await
     }
@@ -340,8 +339,7 @@ where {
             rest_method,
             auth,
             params,
-            Some(body),
-            None::<()>,
+            Some(Body::Json(body)),
         )
         .await
     }
@@ -352,8 +350,7 @@ where {
         url: &str,
         auth: AuthorizationType<'_>,
         params: Option<impl Serialize>,
-        body: Option<impl Serialize>,
-        urlencoded: Option<impl Serialize>,
+        body: Option<Body<impl Serialize>>,
     ) -> Result<T, Error> {
         let url_trimmed = url.split('?').next().unwrap_or(url);
         let prefix = self
@@ -365,11 +362,14 @@ where {
         if let Some(params) = params {
             request_builder = request_builder.query(&params);
         }
-        match (body, urlencoded) {
-            (Some(_), Some(_)) => unreachable!("Cannot have both body and urlencoded"),
-            (Some(body), None) => request_builder = request_builder.json(&body),
-            (None, Some(urlencoded)) => request_builder = request_builder.form(&urlencoded),
-            (None, None) => {}
+        match body {
+            Some(Body::Json(body)) => {
+                request_builder = request_builder.json(&body);
+            }
+            Some(Body::UrlEncoded(body)) => {
+                request_builder = request_builder.form(&body);
+            }
+            None => {}
         }
         match auth {
             AuthorizationType::None => {}
