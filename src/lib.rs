@@ -241,9 +241,7 @@ enum Body<T: Serialize> {
     UrlEncoded(T),
 }
 
-const fn body_none() -> Option<Body<()>> {
-    None
-}
+const BODY_NONE: Option<Body<()>> = None;
 
 /// Implements low level REST requests to be used internally by the library
 #[derive(Clone)]
@@ -272,7 +270,7 @@ impl RestClient {
         params: Option<impl Serialize>,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
-        self.rest_api(reqwest::Method::GET, rest_method, auth, params, body_none())
+        self.rest_api(reqwest::Method::GET, rest_method, auth, params, BODY_NONE)
             .await
     }
 
@@ -287,7 +285,7 @@ impl RestClient {
             rest_method,
             auth,
             params,
-            body_none(),
+            BODY_NONE,
         )
         .await
     }
