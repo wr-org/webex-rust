@@ -27,7 +27,7 @@ mod api {
         type ListParams<'a>: serde::Serialize;
     }
 
-    #[derive(crate::types::Serialize)]
+    #[derive(crate::types::Serialize, Clone, Debug)]
     pub enum Infallible {}
 
     impl Gettable for Message {

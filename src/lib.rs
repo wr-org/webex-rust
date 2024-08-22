@@ -41,18 +41,14 @@ pub mod error;
 pub mod types;
 pub use types::*;
 pub mod auth;
-pub mod utils;
 
 use error::Error;
 
 use crate::adaptive_card::AdaptiveCard;
-use crate::utils::serialize_to_body;
-use base64::{engine::general_purpose as bas64enc, Engine as _};
 use futures::{future::try_join_all, try_join};
 use futures_util::{SinkExt, StreamExt};
-use hyper::Request;
-use hyper_tls::HttpsConnector;
 use log::{debug, error, trace, warn};
+use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -66,11 +62,6 @@ use tokio_tungstenite::{
     tungstenite::{Error as TErr, Message as TMessage},
     MaybeTlsStream, WebSocketStream,
 };
-
-// TODO: proper upgrade to hyper v1 - would be nice to rework things that use these
-use http_body_util::combinators::BoxBody;
-use http_body_util::BodyExt;
-use hyper_util::client::legacy::{connect::HttpConnector, Client};
 
 /*
  * URLs:
@@ -96,8 +87,6 @@ const DEVICE_SYSTEM_NAME: &str = "rust-spark-client";
 
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
-type Body = BoxBody<hyper::body::Bytes, Error>;
-type WebClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 /// Webex API Client
 #[derive(Clone)]
@@ -247,30 +236,26 @@ enum AuthorizationType<'a> {
     },
 }
 
+enum Body<T: Serialize> {
+    Json(T),
+    UrlEncoded(T),
+}
+
+const BODY_NONE: Option<Body<()>> = None;
+
 /// Implements low level REST requests to be used internally by the library
 #[derive(Clone)]
 struct RestClient {
     host_prefix: HashMap<String, String>,
-    web_client: WebClient,
-}
-
-struct RequestBody<T>
-where
-    Body: From<T>,
-{
-    media_type: &'static str,
-    content: T,
+    web_client: reqwest::Client,
 }
 
 impl RestClient {
     /// Creates a new `RestClient`
     pub fn new() -> Self {
-        let https = HttpsConnector::new();
-        let web_client =
-            Client::builder(hyper_util::rt::TokioExecutor::new()).build::<_, Body>(https);
         Self {
             host_prefix: HashMap::new(),
-            web_client,
+            web_client: reqwest::Client::new(),
         }
     }
 
@@ -282,59 +267,88 @@ impl RestClient {
     async fn api_get<'a, T: DeserializeOwned>(
         &self,
         rest_method: &str,
+        params: Option<impl Serialize>,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error> {
-        //self.rest_api("GET", rest_method, None, auth).await
-        self.rest_api_2(
-            reqwest::Method::GET,
-            rest_method,
-            auth,
-            None::<()>,
-            None::<()>,
-        )
-        .await
+        self.rest_api(reqwest::Method::GET, rest_method, auth, params, BODY_NONE)
+            .await
     }
 
     async fn api_delete<'a>(
         &self,
         rest_method: &str,
+        params: Option<impl Serialize>,
         auth: AuthorizationType<'a>,
     ) -> Result<(), Error> {
-        self.rest_api("DELETE", rest_method, None, auth).await
+        self.rest_api(
+            reqwest::Method::DELETE,
+            rest_method,
+            auth,
+            params,
+            BODY_NONE,
+        )
+        .await
     }
 
-    async fn api_post<'a, T: DeserializeOwned, U: Send>(
+    async fn api_post<'a, T: DeserializeOwned>(
         &self,
         rest_method: &str,
-        body: RequestBody<U>,
+        body: impl Serialize,
+        params: Option<impl Serialize>,
         auth: AuthorizationType<'a>,
     ) -> Result<T, Error>
-    where
-        Body: From<U>,
-    {
-        self.rest_api("POST", rest_method, Some(body), auth).await
+where {
+        self.rest_api(
+            reqwest::Method::POST,
+            rest_method,
+            auth,
+            params,
+            Some(Body::Json(body)),
+        )
+        .await
     }
 
-    async fn api_put<'a, T: DeserializeOwned, U: Send>(
+    async fn api_post_form_urlencoded<'a, T: DeserializeOwned>(
         &self,
         rest_method: &str,
-        body: RequestBody<U>,
+        body: impl Serialize,
+        params: Option<impl Serialize>,
         auth: AuthorizationType<'a>,
-    ) -> Result<T, Error>
-    where
-        Body: From<U>,
-    {
-        self.rest_api("PUT", rest_method, Some(body), auth).await
+    ) -> Result<T, Error> {
+        self.rest_api(
+            reqwest::Method::POST,
+            rest_method,
+            auth,
+            params,
+            Some(Body::UrlEncoded(body)),
+        )
+        .await
     }
 
-    #[allow(clippy::all, dead_code, unused, clippy::unused_async)]
-    async fn rest_api_2<D: Serialize, F: Serialize, T: DeserializeOwned>(
+    async fn api_put<'a, T: DeserializeOwned>(
+        &self,
+        rest_method: &str,
+        body: impl Serialize,
+        params: Option<impl Serialize>,
+        auth: AuthorizationType<'a>,
+    ) -> Result<T, Error> {
+        self.rest_api(
+            reqwest::Method::PUT,
+            rest_method,
+            auth,
+            params,
+            Some(Body::Json(body)),
+        )
+        .await
+    }
+
+    async fn rest_api<T: DeserializeOwned>(
         &self,
         http_method: reqwest::Method,
         url: &str,
         auth: AuthorizationType<'_>,
-        params: Option<F>,
-        body: Option<D>,
+        params: Option<impl Serialize>,
+        body: Option<Body<impl Serialize>>,
     ) -> Result<T, Error> {
         let url_trimmed = url.split('?').next().unwrap_or(url);
         let prefix = self
@@ -342,13 +356,18 @@ impl RestClient {
             .get(url_trimmed)
             .map_or(REST_HOST_PREFIX, String::as_str);
         let url = format!("{prefix}/{url}");
-        let client = reqwest::Client::new();
-        let mut request_builder = client.request(http_method, url);
-        if let Some(body) = body {
-            request_builder = request_builder.json(&body);
-        }
+        let mut request_builder = self.web_client.request(http_method, url);
         if let Some(params) = params {
-            request_builder = request_builder.form(&params);
+            request_builder = request_builder.query(&params);
+        }
+        match body {
+            Some(Body::Json(body)) => {
+                request_builder = request_builder.json(&body);
+            }
+            Some(Body::UrlEncoded(body)) => {
+                request_builder = request_builder.form(&body);
+            }
+            None => {}
         }
         match auth {
             AuthorizationType::None => {}
@@ -359,106 +378,8 @@ impl RestClient {
                 request_builder = request_builder.basic_auth(username, Some(password));
             }
         }
-        let res = client.execute(request_builder.build()?).await?;
+        let res = request_builder.send().await?;
         Ok(res.json().await?)
-    }
-
-    async fn rest_api<'a, T: DeserializeOwned, U: Send>(
-        &self,
-        http_method: &str,
-        rest_method: &str,
-        body: Option<RequestBody<U>>,
-        auth: AuthorizationType<'a>,
-    ) -> Result<T, Error>
-    where
-        Body: From<U>,
-    {
-        let reply = self
-            .call_web_api_raw(http_method, rest_method, body, auth)
-            .await?;
-        let mut reply_str = reply.as_str();
-        if reply_str.is_empty() {
-            reply_str = "null";
-        }
-        serde_json::from_str(reply_str).map_err(|e| {
-            error!("Couldn't parse reply for {} call: {:#?}", rest_method, e);
-            trace!("Source JSON: `{}`", reply_str);
-            e.into()
-        })
-    }
-
-    async fn call_web_api_raw<'a, T: Send>(
-        &self,
-        http_method: &str,
-        rest_method: &str,
-        body: Option<RequestBody<T>>,
-        auth: AuthorizationType<'a>,
-    ) -> Result<String, Error>
-    where
-        Body: From<T>,
-    {
-        let default_prefix = String::from(REST_HOST_PREFIX);
-        let rest_method_trimmed = rest_method.split('?').next().unwrap_or(rest_method);
-        let prefix = self
-            .host_prefix
-            .get(rest_method_trimmed)
-            .unwrap_or(&default_prefix);
-        let url = format!("{prefix}/{rest_method}");
-        debug!("Calling {} {:?}", http_method, url);
-        let mut builder = match auth {
-            AuthorizationType::None => Request::builder(),
-            AuthorizationType::Basic { username, password } => {
-                let encoded = bas64enc::STANDARD_NO_PAD.encode(format!("{username}:{password}"));
-                Request::builder().header("Authorization", format!("Basic {encoded}"))
-            }
-            AuthorizationType::Bearer(token) => {
-                Request::builder().header("Authorization", format!("Bearer {token}"))
-            }
-        }
-        .method(http_method)
-        .uri(url);
-        let body = match body {
-            Some(request_body) => {
-                builder = builder.header("Content-Type", request_body.media_type);
-                Body::from(request_body.content)
-            }
-            None => http_body_util::Empty::new()
-                .map_err(|_| unreachable!())
-                .boxed(),
-        };
-        let req = builder.body(body).expect("request builder");
-        match self.web_client.request(req).await {
-            Ok(mut resp) => {
-                let mut reply = String::new();
-                while let Some(chunk) = resp.body_mut().frame().await {
-                    use std::str;
-
-                    let Ok(chunk) = chunk?.into_data() else {
-                        continue;
-                    };
-                    let strchunk = str::from_utf8(&chunk)?;
-                    reply.push_str(strchunk);
-                }
-                match resp.status() {
-                    hyper::StatusCode::LOCKED | hyper::StatusCode::TOO_MANY_REQUESTS => {
-                        let retry_after = resp
-                            .headers()
-                            .get("Retry-After")
-                            .and_then(|s| s.to_str().ok())
-                            .and_then(|t| t.parse::<i64>().ok());
-                        warn!(
-                            "Limited calling {} {}/{}",
-                            http_method, prefix, rest_method_trimmed
-                        );
-                        debug!("Retry-After: {:?}", retry_after);
-                        Err(Error::Limited(resp.status(), retry_after))
-                    }
-                    status if !status.is_success() => Err(Error::StatusText(resp.status(), reply)),
-                    _ => Ok(reply),
-                }
-            }
-            Err(e) => Err(e.into()),
-        }
     }
 }
 
@@ -473,12 +394,9 @@ impl Webex {
     /// Constructs a new Webex Teams context from a token and a chosen name
     /// The name is used to identify the device/client with Webex api
     pub async fn new_with_device_name(device_name: &str, token: &str) -> Self {
-        let https = HttpsConnector::new();
-        let web_client =
-            Client::builder(hyper_util::rt::TokioExecutor::new()).build::<_, Body>(https);
         let mut client: RestClient = RestClient {
             host_prefix: HashMap::new(),
-            web_client,
+            web_client: reqwest::Client::new(),
         };
 
         let mut hasher = DefaultHasher::new();
@@ -629,10 +547,15 @@ impl Webex {
             return Err("Can't get mercury URL with no orgs".into());
         }
         let org_id = &orgs[0].id;
-        let api_url = format!("limited/catalog?format=hostmap&orgId={org_id}");
+        let api_url = "limited/catalog";
+        let params = [("format", "hostmap"), ("orgId", org_id.as_str())];
         let catalogs = self
             .client
-            .api_get::<CatalogReply>(&api_url, AuthorizationType::Bearer(&self.token))
+            .api_get::<CatalogReply>(
+                api_url,
+                Some(params),
+                AuthorizationType::Bearer(&self.token),
+            )
             .await?;
         let mercury_url = catalogs.service_links.wdm;
 
@@ -687,15 +610,15 @@ impl Webex {
     /// one per team).
     pub async fn get_all_rooms(&self) -> Result<Vec<Room>, Error> {
         let (mut all_rooms, teams) = try_join!(self.list(), self.list::<Team>())?;
-        let team_endpoints: Vec<_> = teams
+        let futures: Vec<_> = teams
             .into_iter()
-            .map(|team| format!("{}/?teamId={}", Room::API_ENDPOINT, team.id))
-            .collect();
-        let futures: Vec<_> = team_endpoints
-            .iter()
-            .map(|endpoint| {
-                self.client
-                    .api_get::<ListResult<Room>>(endpoint, AuthorizationType::Bearer(&self.token))
+            .map(|team| {
+                let params = [("teamId", team.id)];
+                self.client.api_get::<ListResult<Room>>(
+                    Room::API_ENDPOINT,
+                    Some(params),
+                    AuthorizationType::Bearer(&self.token),
+                )
             })
             .collect();
         let teams_rooms = try_join_all(futures).await?;
@@ -738,10 +661,8 @@ impl Webex {
         self.client
             .api_post(
                 "messages",
-                RequestBody {
-                    media_type: "application/json",
-                    content: serialize_to_body(message)?,
-                },
+                message,
+                None::<()>,
                 AuthorizationType::Bearer(&self.token),
             )
             .await
@@ -768,10 +689,8 @@ impl Webex {
         self.client
             .api_put(
                 &rest_method,
-                RequestBody {
-                    media_type: "application/json",
-                    content: serialize_to_body(params)?,
-                },
+                params,
+                None::<()>,
                 AuthorizationType::Bearer(&self.token),
             )
             .await
@@ -788,7 +707,11 @@ impl Webex {
     pub async fn get<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<T, Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
-            .api_get::<T>(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
+            .api_get::<T>(
+                rest_method.as_str(),
+                None::<()>,
+                AuthorizationType::Bearer(&self.token),
+            )
             .await
     }
 
@@ -796,14 +719,22 @@ impl Webex {
     pub async fn delete<T: Gettable + DeserializeOwned>(&self, id: &GlobalId) -> Result<(), Error> {
         let rest_method = format!("{}/{}", T::API_ENDPOINT, id.id());
         self.client
-            .api_delete(rest_method.as_str(), AuthorizationType::Bearer(&self.token))
+            .api_delete(
+                rest_method.as_str(),
+                None::<()>,
+                AuthorizationType::Bearer(&self.token),
+            )
             .await
     }
 
     /// List resources of a type
     pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
         self.client
-            .api_get::<ListResult<T>>(T::API_ENDPOINT, AuthorizationType::Bearer(&self.token))
+            .api_get::<ListResult<T>>(
+                T::API_ENDPOINT,
+                None::<()>,
+                AuthorizationType::Bearer(&self.token),
+            )
             .await
             .map(|result| result.items)
     }
@@ -813,13 +744,12 @@ impl Webex {
         &self,
         list_params: T::ListParams<'_>,
     ) -> Result<Vec<T>, Error> {
-        let rest_method = format!(
-            "{}?{}",
-            T::API_ENDPOINT,
-            serde_html_form::to_string(list_params)?
-        );
         self.client
-            .api_get::<ListResult<T>>(&rest_method, AuthorizationType::Bearer(&self.token))
+            .api_get::<ListResult<T>>(
+                T::API_ENDPOINT,
+                Some(list_params),
+                AuthorizationType::Bearer(&self.token),
+            )
             .await
             .map(|result| result.items)
     }
@@ -827,7 +757,11 @@ impl Webex {
     async fn get_devices(&self) -> Result<Vec<DeviceData>, Error> {
         match self
             .client
-            .api_get::<DevicesReply>("devices", AuthorizationType::Bearer(&self.token))
+            .api_get::<DevicesReply>(
+                "devices",
+                None::<()>,
+                AuthorizationType::Bearer(&self.token),
+            )
             .await
         {
             #[rustfmt::skip]
@@ -838,7 +772,7 @@ impl Webex {
             }
             Err(e) => match e {
                 Error::Status(s) | Error::StatusText(s, _) => {
-                    if s == hyper::StatusCode::NOT_FOUND {
+                    if s == StatusCode::NOT_FOUND {
                         debug!("No devices found, creating new one");
                         self.setup_devices().await.map(|device| vec![device])
                     } else {
@@ -856,10 +790,8 @@ impl Webex {
         self.client
             .api_post(
                 "devices",
-                RequestBody {
-                    media_type: "application/json",
-                    content: serialize_to_body(&self.device)?,
-                },
+                &self.device,
+                None::<()>,
                 AuthorizationType::Bearer(&self.token),
             )
             .await

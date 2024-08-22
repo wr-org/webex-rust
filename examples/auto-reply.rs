@@ -37,7 +37,10 @@ async fn main() {
         // Dig out the useful bit
         if event.activity_type() == webex::ActivityType::Message(webex::MessageActivity::Posted) {
             // The event stream doesn't contain the message -- you have to go fetch it
-            if let Ok(msg) = webex.get::<webex::Message>(&event.try_global_id().unwrap()).await {
+            if let Ok(msg) = webex
+                .get::<webex::Message>(&event.try_global_id().unwrap())
+                .await
+            {
                 match &msg.person_email {
                     // Reply as long as it doesn't appear to be our own message
                     // In practice, this shouldn't happen since bots can't see messages
