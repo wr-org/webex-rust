@@ -333,6 +333,8 @@ pub struct MessageEditParams<'a> {
     pub markdown: Option<&'a str>,
     /// The message, in HTML format. The maximum message length is 7439 bytes.
     pub html: Option<&'a str>,
+    /// Attachments to the message, e.g. adaptive cards
+    pub attachments: Option<Vec<Attachment>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
