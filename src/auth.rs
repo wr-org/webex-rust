@@ -1,7 +1,8 @@
 #![deny(missing_docs)]
 //! Ways to authenticate with the Webex API
 
-use crate::{AuthorizationType, RestClient};
+use crate::client::{AuthorizationType, RestClient};
+use crate::error::Error;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tokio::time::{self, Duration, Instant};
@@ -64,11 +65,11 @@ impl DeviceAuthenticator {
     /// First step of device authentication. Returns a [`VerificationToken`]
     /// containing the codes and URLs that can be entered and navigated to
     /// on a different device.
-    pub async fn verify(&self) -> Result<VerificationToken, crate::Error> {
+    pub async fn verify(&self) -> Result<VerificationToken, Error> {
         let params = &[("client_id", self.client_id.as_str()), ("scope", SCOPE)];
         let verification_token = self
             .client
-            .api_post_form_urlencoded::<VerificationToken>(
+            .api_post_form_urlencoded::<VerificationToken, _>(
                 "device/authorize",
                 params,
                 None::<()>,
@@ -84,7 +85,7 @@ impl DeviceAuthenticator {
     pub async fn wait_for_authentication(
         &self,
         verification_token: &VerificationToken,
-    ) -> Result<Bearer, crate::Error> {
+    ) -> Result<Bearer, Error> {
         let params = [
             ("grant_type", GRANT_TYPE),
             ("device_code", &verification_token.device_code),
@@ -101,7 +102,7 @@ impl DeviceAuthenticator {
 
             match self
                 .client
-                .api_post_form_urlencoded::<TokenResponse>(
+                .api_post_form_urlencoded::<TokenResponse, _>(
                     "device/token",
                     params,
                     None::<()>,
@@ -114,13 +115,13 @@ impl DeviceAuthenticator {
             {
                 Ok(token) => return Ok(token.access_token),
                 Err(e) => match e {
-                    crate::error::Error::StatusText(http_status, _) => {
+                    Error::StatusText(http_status, _) => {
                         if http_status != StatusCode::PRECONDITION_REQUIRED {
-                            return Err(crate::Error::Authentication);
+                            return Err(Error::Authentication);
                         }
                     }
                     _ => {
-                        return Err(crate::Error::Authentication);
+                        return Err(Error::Authentication);
                     }
                 },
             }

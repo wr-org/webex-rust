@@ -1,0 +1,21 @@
+#!/bin/sh
+# Pre-commit hook for webex-rust
+# Automatically formats Rust code with cargo fmt before committing
+
+set -e
+
+echo "Running cargo fmt..."
+
+# Run cargo fmt on all Rust files
+if ! cargo fmt --all --check &>/dev/null; then
+    echo "Code formatting issues found. Running cargo fmt..."
+    cargo fmt --all
+
+    # Add the formatted files to the commit
+    git add -u
+
+    echo "✓ Code formatted successfully"
+fi
+
+echo "✓ Pre-commit checks passed"
+exit 0

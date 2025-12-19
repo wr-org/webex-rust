@@ -26,16 +26,21 @@ This is `webex-rust`, an asynchronous Rust library providing a minimal interface
 - `cargo clippy --all-targets --all-features` - Full clippy check
 - `cargo build --all-targets` - Build everything including examples
 
+### Git Hooks
+- `./hooks/install.sh` - Install pre-commit hooks that automatically run cargo fmt
+- Pre-commit hook ensures code is formatted before each commit
+
 ## Architecture
 
 ### Core Components
 
-- **`Webex` struct** (`src/lib.rs:92-100`) - Main API client with token-based authentication
-- **`WebexEventStream`** (`src/lib.rs:102-108`) - WebSocket event stream handler for real-time events
-- **`RestClient`** (`src/lib.rs:247-251`) - Low-level HTTP client wrapper
-- **Types module** (`src/types.rs`) - All API data structures and serialization
-- **AdaptiveCard module** (`src/adaptive_card.rs`) - Support for interactive cards
-- **Auth module** (`src/auth.rs`) - Device authentication flows
+- **`Webex` struct** (`src/client/mod.rs`) - Main API client with token-based authentication
+- **`WebexEventStream`** (`src/client/websocket.rs`) - WebSocket event stream handler for real-time events
+- **`RestClient`** (`src/client/rest.rs`) - Low-level HTTP client wrapper with flexible authentication
+- **Client module** (`src/client/`) - Client implementation split into modular components
+- **Types module** (`src/types/`) - All API data structures organized by resource type
+- **AdaptiveCard module** (`src/adaptive_card/`) - Support for interactive cards with builders
+- **Auth module** (`src/auth.rs`) - Device authentication flows (OAuth device grant)
 - **Error module** (`src/error.rs`) - Comprehensive error handling
 
 ### Key Patterns
@@ -54,8 +59,21 @@ This is `webex-rust`, an asynchronous Rust library providing a minimal interface
 
 ## Important Notes
 
-- Uses Rust 1.76 toolchain (see `rust-toolchain.toml`)
+- Uses Rust 1.92 toolchain (see `rust-toolchain.toml`)
 - Very strict clippy configuration with pedantic and nursery lints enabled
 - All public APIs must have documentation (`#![deny(missing_docs)]`)
 - WebSocket connections require device registration and token authentication
 - Mercury URL caching reduces API calls for device discovery
+- Comprehensive CI workflow with tests, clippy, fmt, build, and doc checks
+- Git pre-commit hooks available in `hooks/` directory to auto-format code
+
+## Recent Refactoring (v0.11.0)
+
+- **Module organization**: Refactored large files into logical modules
+  - `src/lib.rs` reduced from 1532 lines to 54 lines (thin orchestrator)
+  - `src/client/` module split into `mod.rs`, `rest.rs`, and `websocket.rs`
+  - `src/types/` module organized by resource type (message, room, person, etc.)
+  - `src/adaptive_card/` module split into elements, containers, and styles
+- **Backward compatibility**: All public APIs maintained, including Clone trait on Webex struct
+- **Test coverage**: 37 unit tests ensuring functionality after refactoring
+- **Documentation**: Fixed broken doc links, cargo doc builds with zero warnings

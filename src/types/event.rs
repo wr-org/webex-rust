@@ -1,475 +1,14 @@
-#![deny(missing_docs)]
-//! Basic types for Webex Teams APIs
+//! Event and activity types for the Webex WebSocket API, including `GlobalId` utilities.
 
-use crate::{adaptive_card::AdaptiveCard, error};
+use crate::error;
 use base64::Engine;
-
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::{collections::HashMap, fmt};
 use uuid::Uuid;
 
-pub(crate) use api::{Gettable, ListResult};
-
-mod api {
-    //! Private crate to hold all types that the user shouldn't have to interact with.
-    use super::{
-        AttachmentAction, Membership, MembershipListParams, Message, MessageListParams,
-        Organization, Person, Room, RoomListParams, Team,
-    };
-
-    /// Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
-    /// in a private crate so users don't see it.
-    pub trait Gettable {
-        /// Endpoint to query to perform an HTTP GET request with an id (to get an instance), or
-        /// without an id (to list them).
-        const API_ENDPOINT: &'static str;
-        type ListParams<'a>: serde::Serialize;
-    }
-
-    #[derive(crate::types::Serialize, Clone, Debug)]
-    pub enum Infallible {}
-
-    impl Gettable for Message {
-        const API_ENDPOINT: &'static str = "messages";
-        type ListParams<'a> = MessageListParams<'a>;
-    }
-
-    impl Gettable for Organization {
-        const API_ENDPOINT: &'static str = "organizations";
-        type ListParams<'a> = Option<Infallible>;
-    }
-
-    impl Gettable for AttachmentAction {
-        const API_ENDPOINT: &'static str = "attachment/actions";
-        type ListParams<'a> = Option<Infallible>;
-    }
-
-    impl Gettable for Room {
-        const API_ENDPOINT: &'static str = "rooms";
-        type ListParams<'a> = RoomListParams<'a>;
-    }
-
-    impl Gettable for Person {
-        const API_ENDPOINT: &'static str = "people";
-        type ListParams<'a> = Option<Infallible>;
-    }
-
-    impl Gettable for Team {
-        const API_ENDPOINT: &'static str = "teams";
-        type ListParams<'a> = Option<Infallible>;
-    }
-
-    impl Gettable for Membership {
-        const API_ENDPOINT: &'static str = "memberships";
-        type ListParams<'a> = MembershipListParams<'a>;
-    }
-
-    #[derive(crate::types::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ListResult<T> {
-        pub items: Option<Vec<T>>,
-        // Some API endpoints might return different field names
-        pub devices: Option<Vec<T>>,
-        // Handle error cases - allow dead_code since these are for future API error handling
-        #[allow(dead_code)]
-        pub message: Option<String>,
-        #[allow(dead_code)]
-        pub errors: Option<Vec<serde_json::Value>>,
-    }
-}
-
-/// Webex Teams room information
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Room {
-    /// A unique identifier for the room.
-    pub id: String,
-    /// A user-friendly name for the room.
-    pub title: Option<String>,
-    /// The room type.
-    ///
-    /// direct - 1:1 room
-    /// group - group room
-    #[serde(rename = "type")]
-    pub room_type: String,
-    /// Whether the room is moderated (locked) or not.
-    pub is_locked: bool,
-    /// The ID for the team with which this room is associated.
-    pub team_id: Option<String>,
-    /// The date and time of the room's last activity.
-    pub last_activity: String,
-    /// The ID of the person who created this room.
-    pub creator_id: String,
-    /// The date and time the room was created.
-    pub created: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, crate::types::Serialize)]
-#[serde(rename_all = "lowercase")]
-/// Sorting order for `RoomListParams`
-pub enum SortRoomsBy {
-    /// room id
-    Id,
-    /// last activity timestamp
-    LastActivity,
-    /// created timestamp
-    Created,
-}
-
-#[skip_serializing_none]
-#[derive(Clone, Debug, Default, Eq, PartialEq, crate::types::Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Parameters for listing rooms
-pub struct RoomListParams<'a> {
-    /// List rooms in a team, by ID.
-    pub team_id: Option<&'a str>,
-    /// List rooms by type. Cannot be set in combination with orgPublicSpaces.
-    #[serde(rename = "type")]
-    pub room_type: Option<RoomType>,
-    /// Shows the org's public spaces joined and unjoined. When set the result list is sorted by the madePublic timestamp.
-    pub org_public_spaces: Option<bool>,
-    /// Filters rooms, that were made public after this time. See madePublic timestamp
-    pub from: Option<&'a str>,
-    /// Filters rooms, that were made public before this time. See madePublic timestamp
-    pub to: Option<&'a str>,
-    /// Sort results. Cannot be set in combination with orgPublicSpaces.
-    pub sort_by: Option<SortRoomsBy>,
-    /// Limit the maximum number of rooms in the response.
-    /// Default: 100
-    pub max: Option<u32>,
-}
-
-/// Holds details about the organization an account belongs to.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Organization {
-    /// Id of the org.
-    pub id: String,
-    /// Display name of the org
-    pub display_name: Option<String>,
-    /// Date and time the org was created
-    pub created: String,
-}
-
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-/// Holds details about a team that includes the account.
-pub struct Team {
-    /// Id of the team
-    pub id: String,
-    /// Name of the team
-    pub name: Option<String>,
-    /// Date and time the team was created
-    pub created: String,
-    /// Team description
-    pub description: Option<String>,
-}
-
-/// Webex Teams membership information
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Membership {
-    /// A unique identifier for the membership.
-    pub id: String,
-    /// The room ID associated with this membership.
-    #[serde(default, rename = "roomId")]
-    pub room_id: String,
-    /// The person ID associated with this membership.
-    #[serde(default, rename = "personId")]
-    pub person_id: String,
-    /// The email address of the person.
-    #[serde(rename = "personEmail")]
-    pub person_email: Option<String>,
-    /// The display name of the person.
-    #[serde(rename = "personDisplayName")]
-    pub person_display_name: Option<String>,
-    /// The organization ID of the person.
-    #[serde(rename = "personOrgId")]
-    pub person_org_id: Option<String>,
-    /// Whether or not the participant is a moderator of the room.
-    #[serde(rename = "isModerator")]
-    pub is_moderator: bool,
-    /// Whether or not the participant is a monitor of the room.
-    #[serde(rename = "isMonitor")]
-    pub is_monitor: bool,
-    /// The date and time when the membership was created.
-    pub created: String,
-}
-
-#[skip_serializing_none]
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Parameters for listing memberships
-pub struct MembershipListParams<'a> {
-    /// List memberships for a room, by ID.
-    pub room_id: Option<&'a str>,
-    /// List memberships for a person, by ID.
-    pub person_id: Option<&'a str>,
-    /// List memberships for a person, by email address.
-    pub person_email: Option<&'a str>,
-    /// Limit the maximum number of memberships in the response.
-    /// Default: 100
-    pub max: Option<u32>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct CatalogReply {
-    pub service_links: Catalog,
-}
-
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct Catalog {
-    pub atlas: String,
-    #[serde(rename = "broadworksIdpProxy")]
-    pub broadworks_idp_proxy: String,
-    #[serde(rename = "clientLogs")]
-    pub client_logs: String,
-    pub ecomm: String,
-    pub fms: String,
-    pub idbroker: String,
-    pub idbroker_guest: String,
-    pub identity: String,
-    pub identity_guest_cs: String,
-    pub license: String,
-    #[serde(rename = "meetingRegistry")]
-    pub meeting_registry: String,
-    pub metrics: String,
-    pub oauth_helper: String,
-    pub settings_service: String,
-    pub u2c: String,
-    /// wdm is the url used for fetching devices.
-    pub wdm: String,
-    pub web_authentication: String,
-    pub webex_appapi_service: String,
-}
-
-/// Destination for a `MessageOut`
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Destination {
-    /// Post a message in this room
-    RoomId(String),
-    /// Post a message to a person, using their user ID
-    ToPersonId(String),
-    /// Post a message to a person, using their email
-    ToPersonEmail(String),
-}
-
-/// Outgoing message
-#[skip_serializing_none]
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MessageOut {
-    /// The parent message to reply to.
-    pub parent_id: Option<String>,
-    /// The room ID of the message.
-    pub room_id: Option<String>,
-    /// The person ID of the recipient when sending a private 1:1 message.
-    pub to_person_id: Option<String>,
-    /// The email address of the recipient when sending a private 1:1 message.
-    pub to_person_email: Option<String>,
-    // TODO - should we use globalIDs? We should check this field before the message is sent
-    // rolls up room_id, to_person_id, and to_person_email all in one field :)
-    //#[serde(flatten)]
-    //pub deliver_to: Option<Destination>,
-    /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text. The maximum message length is 7439 bytes.
-    pub text: Option<String>,
-    /// The message, in Markdown format. The maximum message length is 7439 bytes.
-    pub markdown: Option<String>,
-    /// The public URL to a binary file to be posted into the room. Only one file is allowed per message. Uploaded files are automatically converted into a format that all Webex Teams clients can render. For the supported media types and the behavior of uploads, see the [Message Attachments Guide](https://developer.webex.com/docs/api/basics#message-attachments).
-    pub files: Option<Vec<String>>,
-    /// Content attachments to attach to the message. Only one card per message is supported.
-    pub attachments: Option<Vec<Attachment>>,
-}
-
-/// Type of room
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum RoomType {
-    #[default]
-    /// 1:1 private chat
-    Direct,
-    /// Group room
-    Group,
-}
-
-/// Webex Teams message information
-#[skip_serializing_none]
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Message {
-    /// The unique identifier for the message.
-    pub id: Option<String>,
-    /// The room ID of the message.
-    pub room_id: Option<String>,
-    /// The room type.
-    pub room_type: Option<RoomType>,
-    /// The person ID of the recipient when sending a private 1:1 message.
-    pub to_person_id: Option<String>,
-    /// The email address of the recipient when sending a private 1:1 message.
-    pub to_person_email: Option<String>,
-    /// The message, in plain text. If markdown is specified this parameter may be optionally used to provide alternate text for UI clients that do not support rich text.
-    pub text: Option<String>,
-    /// The message, in Markdown format.
-    pub markdown: Option<String>,
-    /// The text content of the message, in HTML format. This read-only property is used by the Webex Teams clients.
-    pub html: Option<String>,
-    /// Public URLs for files attached to the message. For the supported media types and the behavior of file uploads, see Message Attachments.
-    pub files: Option<Vec<String>>,
-    /// The person ID of the message author.
-    pub person_id: Option<String>,
-    /// The email address of the message author.
-    pub person_email: Option<String>,
-    /// People IDs for anyone mentioned in the message.
-    pub mentioned_people: Option<Vec<String>>,
-    /// Group names for the groups mentioned in the message.
-    pub mentioned_groups: Option<Vec<String>>,
-    /// Message content attachments attached to the message.
-    pub attachments: Option<Vec<Attachment>>,
-    /// The date and time the message was created.
-    pub created: Option<String>,
-    /// The date and time the message was updated, if it was edited.
-    pub updated: Option<String>,
-    /// The ID of the "parent" message (the start of the reply chain)
-    pub parent_id: Option<String>,
-}
-
-#[skip_serializing_none]
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Parameters for listing messages
-pub struct MessageListParams<'a> {
-    /// List messages in a room, by ID.
-    pub room_id: &'a str,
-    /// List messages with a parent, by ID.
-    pub parent_id: Option<&'a str>,
-    /// List messages with these people mentioned, by ID. Use me as a shorthand for the current API user.
-    /// Only me or the person ID of the current user may be specified. Bots must include this parameter
-    /// to list messages in group rooms (spaces).
-    #[serde(skip_serializing_if = "<[_]>::is_empty")]
-    pub mentioned_people: &'a [&'a str],
-    /// List messages sent before a date and time.
-    pub before: Option<&'a str>,
-    /// List messages sent before a message, by ID.
-    pub before_message: Option<&'a str>,
-    /// Limit the maximum number of messages in the response.
-    /// Default: 50
-    pub max: Option<u32>,
-}
-
-impl<'a> MessageListParams<'a> {
-    /// Creates a new `MessageListParams` with the given room ID.
-    #[allow(clippy::must_use_candidate)]
-    pub const fn new(room_id: &'a str) -> Self {
-        Self {
-            room_id,
-            parent_id: None,
-            mentioned_people: &[],
-            before: None,
-            before_message: None,
-            max: None,
-        }
-    }
-}
-
-/// Parameters for editing a message.
-/// `room_id` is required, and at least one of `text` or `markdown` must be set.
-/// Follows <https://developer.webex.com/docs/api/v1/messages/edit-a-message>
-#[skip_serializing_none]
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MessageEditParams<'a> {
-    /// The id of the room the message is posted in.
-    pub room_id: &'a str,
-    /// The plain text content of the message. If markdown is specified this parameter may be optionally
-    /// used to provide alternate text for UI clients that do not support rich text.
-    pub text: Option<&'a str>,
-    /// The markdown content of the message. If this attribute is set ensure that the request does NOT contain an html attribute.
-    pub markdown: Option<&'a str>,
-    /// The message, in HTML format. The maximum message length is 7439 bytes.
-    pub html: Option<&'a str>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[allow(dead_code)]
-pub(crate) struct EmptyReply {}
-
-/// API Error
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct DeviceError {
-    pub description: String,
-}
-
-#[allow(missing_docs)]
-#[skip_serializing_none]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub(crate) struct DevicesReply {
-    pub devices: Option<Vec<DeviceData>>,
-    pub message: Option<String>,
-    pub errors: Option<Vec<DeviceError>>,
-    #[serde(rename = "trackingId")]
-    pub tracking_id: Option<String>,
-}
-
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceData {
-    pub url: Option<String>,
-    #[serde(rename = "webSocketUrl")]
-    pub ws_url: Option<String>,
-    pub device_name: Option<String>,
-    pub device_type: Option<String>,
-    pub localized_model: Option<String>,
-    pub modification_time: Option<chrono::DateTime<chrono::Utc>>,
-    pub model: Option<String>,
-    pub name: Option<String>,
-    pub system_name: Option<String>,
-    pub system_version: Option<String>,
-}
-
-impl fmt::Display for DeviceData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "name: {:?}, device_name: {:?}, device_type: {:?}, model: {:?}, system_name: {:?}, system_version: {:?}, url: {:?}",
-        self.name, self.device_name, self.device_type, self.model, self.system_name, self.system_version, self.url)
-    }
-}
-
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Authorization {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub auth_type: String,
-    data: AuthToken,
-}
-
-impl Authorization {
-    /// Create a new `Authorization` object from a token
-    /// id is a random UUID v4
-    #[must_use]
-    pub fn new(token: &str) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            auth_type: "authorization".to_string(),
-            data: AuthToken {
-                token: format!("Bearer {token}"),
-            },
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub(crate) struct AuthToken {
-    pub token: String,
-}
-
+/// Actor information from WebSocket events.
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -534,7 +73,7 @@ pub enum ActivityType {
     Message(MessageActivity),
     /// The space the bot is in has changed - see [`SpaceActivity`] for details.
     Space(SpaceActivity),
-    /// The user has submitted an [`AdaptiveCard`].
+    /// The user has submitted an [`AdaptiveCard`](crate::adaptive_card::AdaptiveCard).
     AdaptiveCardSubmit,
     /// Meeting event.
     /// TODO: This needs to be broken down like `Message` and `Space`, if anyone cares.
@@ -750,16 +289,15 @@ impl Event {
     /// Get the UUID of the room the Space created event corresponds to.
     /// This is a workaround for a bug in the API, where the UUID returned in the event is not correct.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Will panic if the event is not `Space::Created` or if activity is not set.
+    /// Returns an error if the event is not `Space::Created` or if activity is not set.
     fn room_id_of_space_created_event(&self) -> Result<String, crate::error::Error> {
-        assert_eq!(
-            self.activity_type(),
-            ActivityType::Space(SpaceActivity::Created),
-            "Expected space created event, got {:?}",
-            self.activity_type()
-        );
+        if self.activity_type() != ActivityType::Space(SpaceActivity::Created) {
+            return Err(crate::error::Error::Api(
+                "Expected space created event, got different activity type",
+            ));
+        }
         let activity_id = self
             .data
             .activity
@@ -1049,101 +587,6 @@ pub struct Event {
     pub filter_message: bool,
 }
 
-/// Message content attachments attached to the message.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct Attachment {
-    /// The content type of the attachment.
-    #[serde(rename = "contentType")]
-    pub content_type: String,
-    /// Adaptive Card content.
-    pub content: AdaptiveCard,
-}
-
-/// Attachment action details
-#[skip_serializing_none]
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AttachmentAction {
-    /// A unique identifier for the action.
-    pub id: String,
-    /// The type of action performed. Only 'submit' is currently supported.
-    /// Required when posting an attachment.
-    #[serde(rename = "type")]
-    pub action_type: Option<String>,
-    /// The parent message the attachment action was performed on.
-    /// Required when posting an attachment.
-    pub message_id: Option<String>,
-    /// The action's inputs.
-    /// Required when posting an attachment.
-    pub inputs: Option<HashMap<String, serde_json::Value>>,
-    /// The ID of the person who performed the action.
-    pub person_id: Option<String>,
-    /// The ID of the room the action was performed within.
-    pub room_id: Option<String>,
-    /// The date and time the action was created.
-    pub created: Option<String>,
-}
-
-/// Person information
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Person {
-    /// A unique identifier for the person.
-    pub id: String,
-    /// The email addresses of the person.
-    pub emails: Vec<String>,
-    /// Phone numbers for the person.
-    pub phone_numbers: Option<Vec<PhoneNumber>>,
-    /// The full name of the person.
-    #[serde(rename = "displayName")]
-    pub display_name: String,
-    /// The nickname of the person if configured. If no nickname is configured for the person, this field will not be present.
-    pub nick_name: Option<String>,
-    /// The first name of the person.
-    pub first_name: Option<String>,
-    /// The last name of the person.
-    pub last_name: Option<String>,
-    /// The URL to the person's avatar in PNG format.
-    pub avatar: Option<String>,
-    /// The ID of the organization to which this person belongs.
-    #[serde(rename = "orgId")]
-    pub org_id: String,
-    /// The date and time the person was created.
-    pub created: String,
-    /// The date and time of the person's last activity within Webex Teams.
-    pub last_activity: String,
-    /// The current presence status of the person.
-    ///
-    /// active - active within the last 10 minutes
-    /// call - the user is in a call
-    /// `DoNotDisturb` - the user has manually set their status to "Do Not Disturb"
-    /// inactive - last activity occurred more than 10 minutes ago
-    /// meeting - the user is in a meeting
-    /// `OutOfOffice` - the user or a Hybrid Calendar service has indicated that they are "Out of Office"
-    /// pending - the user has never logged in; a status cannot be determined
-    /// presenting - the user is sharing content
-    /// unknown - the user’s status could not be determined
-    pub status: String,
-    /// The type of person account, such as person or bot.
-    ///
-    /// person- account belongs to a person
-    /// bot - account is a bot user
-    /// appuser - account is a guest user
-    #[serde(rename = "type")]
-    pub person_type: String,
-}
-
-/// Phone number information
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default)]
-pub struct PhoneNumber {
-    /// Phone number type
-    #[serde(rename = "type")]
-    pub number_type: String,
-    /// Phone number
-    pub value: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1238,5 +681,67 @@ mod tests {
             ..Default::default()
         });
         assert!(event.room_id_of_space_created_event().is_err());
+    }
+
+    #[test]
+    fn test_global_id_from_uuid() {
+        let uuid = "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf";
+        let global_id = GlobalId::new(GlobalIdType::Room, uuid.to_string()).unwrap();
+
+        assert_eq!(global_id.type_, GlobalIdType::Room);
+        // The ID should be base64 encoded when created from a UUID
+        assert!(!global_id.id().is_empty());
+        assert_ne!(global_id.id(), uuid);
+    }
+
+    #[test]
+    fn test_global_id_check_type_success() {
+        let uuid = "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf";
+        let global_id = GlobalId::new(GlobalIdType::Room, uuid.to_string()).unwrap();
+
+        assert!(global_id.check_type(GlobalIdType::Room).is_ok());
+    }
+
+    #[test]
+    fn test_global_id_check_type_failure() {
+        let uuid = "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf";
+        let global_id = GlobalId::new(GlobalIdType::Room, uuid.to_string()).unwrap();
+
+        assert!(global_id.check_type(GlobalIdType::Person).is_err());
+    }
+
+    #[test]
+    fn test_global_id_with_cluster() {
+        let uuid = "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf";
+        let global_id =
+            GlobalId::new_with_cluster(GlobalIdType::Room, uuid.to_string(), Some("eu")).unwrap();
+
+        // The cluster should be encoded in the base64 ID
+        assert!(!global_id.id().is_empty());
+        assert_ne!(global_id.id(), uuid);
+    }
+
+    #[test]
+    fn test_global_id_unknown_type_error() {
+        let uuid = "1ab849e0-9ab4-11ee-a70f-d9b57e49f8bf";
+        let result = GlobalId::new(GlobalIdType::Unknown, uuid.to_string());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_global_id_already_encoded() {
+        // If given an already encoded GlobalId, it should pass through
+        let encoded =
+            "Y2lzY29zcGFyazovL3VzL1JPT00vMWFiODQ5ZTAtOWFiNC0xMWVlLWE3MGYtZDliNTdlNDlmOGJm";
+        let global_id = GlobalId::new(GlobalIdType::Room, encoded.to_string()).unwrap();
+
+        assert_eq!(global_id.id, encoded);
+    }
+
+    #[test]
+    fn test_message_activity_is_created() {
+        assert!(MessageActivity::Posted.is_created());
+        assert!(!MessageActivity::Deleted.is_created());
     }
 }

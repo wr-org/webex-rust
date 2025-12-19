@@ -8,15 +8,47 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  build:
-
+  test:
+    name: Test
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: cargo test --verbose
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run clippy (warnings only)
+        run: cargo clippy --all-targets --all-features
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Build crate
         run: cargo build --verbose
-      - name: Buld examples
-        run: cargo build --examples
+      - name: Build examples
+        run: cargo build --examples --verbose
+
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check documentation
+        run: cargo doc --no-deps --document-private-items

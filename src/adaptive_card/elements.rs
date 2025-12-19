@@ -1,119 +1,15 @@
-#![deny(missing_docs)]
-#![allow(clippy::return_self_not_must_use)]
-//! Adaptive Card implementation
-//!
-//! [Webex Teams currently supports only version 1.1](https://developer.webex.com/docs/cards)
-//!
-//! More info about the schema can be found [here](https://adaptivecards.io/explorer/)
+//! Card elements for building Adaptive Card content.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-/// Adaptive Card structure for message attachment
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct AdaptiveCard {
-    /// Must be "`AdaptiveCard`"
-    #[serde(rename = "type")]
-    pub card_type: String,
-    /// Schema version that this card requires. If a client is lower than this version, the fallbackText will be rendered.
-    /// Maximum version is 1.1
-    #[serde(default = "default_version")] // Workaround for Webex not always providing it :/
-    pub version: String,
-    /// The card elements to show in the primary card region.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub body: Option<Vec<CardElement>>,
-    /// Actions available for this card
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub actions: Option<Vec<Action>>,
-    /// An Action that will be invoked when the card is tapped or selected.
-    #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
-    pub select_action: Option<Box<Action>>,
-    /// Text shown when the client doesn’t support the version specified (may contain markdown).
-    #[serde(rename = "fallbackText", skip_serializing_if = "Option::is_none")]
-    pub fallback_text: Option<String>,
-    /// Specifies the minimum height of the card.
-    #[serde(rename = "minHeight", skip_serializing_if = "Option::is_none")]
-    pub min_height: Option<String>,
-    /// The 2-letter ISO-639-1 language used in the card. Used to localize any date/time functions.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lang: Option<String>,
-    /// The Adaptive Card schema.
-    /// <http://adaptivecards.io/schemas/adaptive-card.json>
-    #[serde(rename = "$schema")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema: Option<String>,
-}
+use super::containers::{Choice, Column, Fact};
+use super::styles::{
+    ChoiceInputStyle, Color, ContainerStyle, FontType, Height, HorizontalAlignment, ImageSize,
+    ImageStyle, Size, Spacing, TextInputStyle, VerticalContentAlignment, Weight,
+};
+use super::Action;
 
-impl AdaptiveCard {
-    /// Create new adaptive card with mandatory defaults
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            card_type: "AdaptiveCard".to_string(),
-            version: "1.1".to_string(),
-            body: None,
-            actions: None,
-            select_action: None,
-            fallback_text: None,
-            min_height: None,
-            lang: None,
-            schema: Some("http://adaptivecards.io/schemas/adaptive-card.json".to_string()),
-        }
-    }
-
-    /// Adds Element to body
-    ///
-    /// # Arguments
-    ///
-    /// * `card` - `CardElement` to add
-    pub fn add_body<T: Into<CardElement>>(&mut self, card: T) -> Self {
-        //self.body = self.body.map_or_else(|| Some(vec![card.into()]), |body| body.push(card.into()));
-        //self.body = Some(self.body.unwrap_or_default().push(card.into()));
-        // TODO: improve this - can we use take()?
-        self.body = Some(match self.body.clone() {
-            None => {
-                vec![card.into()]
-            }
-            Some(mut body) => {
-                body.push(card.into());
-                body
-            }
-        });
-        self.into()
-    }
-
-    /// Adds Actions
-    ///
-    /// # Arguments
-    ///
-    /// * `action` - Action to add
-    pub fn add_action<T: Into<Action>>(&mut self, a: T) -> Self {
-        self.actions = Some(match self.actions.clone() {
-            None => {
-                vec![a.into()]
-            }
-            Some(mut action) => {
-                action.push(a.into());
-                action
-            }
-        });
-        self.into()
-    }
-}
-
-impl From<&Self> for AdaptiveCard {
-    fn from(item: &Self) -> Self {
-        item.clone()
-    }
-}
-
-impl From<&mut Self> for AdaptiveCard {
-    fn from(item: &mut Self) -> Self {
-        item.clone()
-    }
-}
-
-/// Card element types
+/// Represents the various types of elements that can be included in an Adaptive Card.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type")]
 pub enum CardElement {
@@ -168,7 +64,7 @@ pub enum CardElement {
 
     /// The `FactSet` element displays a series of facts (i.e. name/value pairs) in a tabular form.
     FactSet {
-        /// The array of Fact‘s.
+        /// The array of Fact's.
         facts: Vec<Fact>,
         /// Specifies the height of the element.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -261,10 +157,10 @@ pub enum CardElement {
         /// hex value of a color (e.g. #982374)
         #[serde(rename = "backgroundColor", skip_serializing_if = "Option::is_none")]
         background_color: Option<String>,
-        /// The desired on-screen width of the image, ending in ‘px’. E.g., 50px. This overrides the size property.
+        /// The desired on-screen width of the image, ending in 'px'. E.g., 50px. This overrides the size property.
         #[serde(skip_serializing_if = "Option::is_none")]
         width: Option<String>,
-        /// The desired height of the image. If specified as a pixel value, ending in ‘px’, E.g., 50px, the image will distort to fit that exact height. This overrides the size property.
+        /// The desired height of the image. If specified as a pixel value, ending in 'px', E.g., 50px, the image will distort to fit that exact height. This overrides the size property.
         #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<String>,
         /// Controls how this element is horizontally positioned within its parent.
@@ -413,7 +309,7 @@ pub enum CardElement {
     InputToggle {
         /// Unique identifier for the value. Used to identify collected input when the Submit action is performed.
         id: String,
-        /// The initial selected value. If you want the toggle to be initially on, set this to the value of valueOn‘s value.
+        /// The initial selected value. If you want the toggle to be initially on, set this to the value of valueOn's value.
         #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<String>,
         /// The value when toggle is off
@@ -470,6 +366,18 @@ pub enum CardElement {
         /// Specifies the height of the element.
         #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
+        /// Controls the horizontal text alignment.
+        #[serde(
+            rename = "HorizontalAlignment",
+            skip_serializing_if = "Option::is_none"
+        )]
+        horizontal_alignment: Option<HorizontalAlignment>,
+        /// When true, draw a separating line at the top of the element.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        separator: Option<bool>,
+        /// Controls the amount of spacing between this element and the preceding element.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        spacing: Option<Spacing>,
     },
 }
 
@@ -503,6 +411,7 @@ impl CardElement {
     }
 
     /// Add element to Container
+    #[must_use]
     pub fn add_element<T: Into<Self>>(&mut self, element: T) -> Self {
         if let Self::Container { items, .. } = self {
             items.push(element.into());
@@ -511,6 +420,7 @@ impl CardElement {
     }
 
     /// Set Container Style
+    #[must_use]
     pub fn set_container_style(&mut self, s: ContainerStyle) -> Self {
         if let Self::Container { style, .. } = self {
             *style = Some(s);
@@ -519,6 +429,7 @@ impl CardElement {
     }
 
     /// Set container contents vertical alignment
+    #[must_use]
     pub fn set_vertical_alignment(&mut self, align: VerticalContentAlignment) -> Self {
         if let Self::Container {
             vertical_content_alignment,
@@ -548,6 +459,7 @@ impl CardElement {
     }
 
     /// Set Text Input Multiline
+    #[must_use]
     pub fn set_multiline(&mut self, s: bool) -> Self {
         if let Self::InputText { is_multiline, .. } = self {
             *is_multiline = Some(s);
@@ -586,6 +498,7 @@ impl CardElement {
     }
 
     /// Set choiceSet Style
+    #[must_use]
     pub fn set_style(&mut self, s: ChoiceInputStyle) -> Self {
         if let Self::InputChoiceSet { style, .. } = self {
             *style = Some(s);
@@ -594,6 +507,7 @@ impl CardElement {
     }
 
     /// Set title Style
+    #[must_use]
     pub fn set_title(&mut self, s: String) -> Self {
         if let Self::InputToggle { title, .. } = self {
             *title = Some(s);
@@ -602,6 +516,7 @@ impl CardElement {
     }
 
     /// Set choiceSet Style
+    #[must_use]
     pub fn set_multiselect(&mut self, b: bool) -> Self {
         if let Self::InputChoiceSet {
             is_multi_select, ..
@@ -637,6 +552,7 @@ impl CardElement {
     }
 
     /// Set Text Weight
+    #[must_use]
     pub fn set_weight(&mut self, w: Weight) -> Self {
         if let Self::TextBlock { weight, .. } = self {
             *weight = Some(w);
@@ -645,6 +561,7 @@ impl CardElement {
     }
 
     /// Set Text Font Type
+    #[must_use]
     pub fn set_font(&mut self, f: FontType) -> Self {
         if let Self::TextBlock { font_type, .. } = self {
             *font_type = Some(f);
@@ -653,6 +570,7 @@ impl CardElement {
     }
 
     /// Set Text Size
+    #[must_use]
     pub fn set_size(&mut self, s: Size) -> Self {
         if let Self::TextBlock { size, .. } = self {
             *size = Some(s);
@@ -661,6 +579,7 @@ impl CardElement {
     }
 
     /// Set Text Color
+    #[must_use]
     pub fn set_color(&mut self, c: Color) -> Self {
         if let Self::TextBlock { color, .. } = self {
             *color = Some(c);
@@ -669,6 +588,7 @@ impl CardElement {
     }
 
     /// Set Text wrap
+    #[must_use]
     pub fn set_wrap(&mut self, w: bool) -> Self {
         if let Self::TextBlock { wrap, .. } = self {
             *wrap = Some(w);
@@ -677,6 +597,7 @@ impl CardElement {
     }
 
     /// Set Text subtle
+    #[must_use]
     pub fn set_subtle(&mut self, s: bool) -> Self {
         if let Self::TextBlock { is_subtle, .. } = self {
             *is_subtle = Some(s);
@@ -715,6 +636,7 @@ impl CardElement {
     }
 
     /// Add fact to factSet
+    #[must_use]
     pub fn add_key_value<T: Into<String>, S: Into<String>>(&mut self, title: T, value: S) -> Self {
         match self {
             Self::FactSet { facts, .. } => facts.push(Fact {
@@ -745,6 +667,7 @@ impl CardElement {
     }
 
     /// Add column to columnSet
+    #[must_use]
     pub fn add_column(&mut self, column: Column) -> Self {
         if let Self::ColumnSet { columns, .. } = self {
             columns.push(column);
@@ -753,6 +676,7 @@ impl CardElement {
     }
 
     /// Set Separator
+    #[must_use]
     pub fn set_separator(&mut self, s: bool) -> Self {
         match self {
             Self::TextBlock { separator, .. }
@@ -760,6 +684,7 @@ impl CardElement {
             | Self::ColumnSet { separator, .. }
             | Self::Image { separator, .. }
             | Self::InputChoiceSet { separator, .. }
+            | Self::ActionSet { separator, .. }
             | Self::InputText { separator, .. }
             | Self::InputToggle { separator, .. } => {
                 *separator = Some(s);
@@ -772,6 +697,7 @@ impl CardElement {
     }
 
     /// Set Placeholder
+    #[must_use]
     pub fn set_placeholder(&mut self, s: Option<String>) -> Self {
         match self {
             Self::InputText { placeholder, .. }
@@ -786,7 +712,33 @@ impl CardElement {
         self.into()
     }
 
+    /// Set Horizontal Alignment
+    #[must_use]
+    pub fn set_horizontal_alignment(&mut self, alignment: HorizontalAlignment) -> Self {
+        match self {
+            Self::TextBlock {
+                horizontal_alignment,
+                ..
+            }
+            | Self::Image {
+                horizontal_alignment,
+                ..
+            }
+            | Self::ActionSet {
+                horizontal_alignment,
+                ..
+            } => {
+                *horizontal_alignment = Some(alignment);
+            }
+            _ => {
+                log::warn!("Card does not have horizontal alignment field");
+            }
+        }
+        self.into()
+    }
+
     /// Set Spacing
+    #[must_use]
     pub fn set_spacing(&mut self, s: Spacing) -> Self {
         match self {
             Self::TextBlock { spacing, .. }
@@ -794,6 +746,7 @@ impl CardElement {
             | Self::ColumnSet { spacing, .. }
             | Self::Image { spacing, .. }
             | Self::InputChoiceSet { spacing, .. }
+            | Self::ActionSet { spacing, .. }
             | Self::InputText { spacing, .. } => {
                 *spacing = Some(s);
             }
@@ -810,327 +763,18 @@ impl CardElement {
         Self::ActionSet {
             actions: vec![],
             height: None,
+            horizontal_alignment: None,
+            separator: None,
+            spacing: None,
         }
     }
 
     /// Add action to actionSet
+    #[must_use]
     pub fn add_action_to_set(&mut self, action: Action) -> Self {
         if let Self::ActionSet { actions, .. } = self {
             actions.push(action);
         }
         self.into()
     }
-}
-
-/// Defines a container that is part of a `ColumnSet`.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct Column {
-    /// The card elements to render inside the Column.
-    #[serde(default)]
-    items: Vec<CardElement>,
-    /// An Action that will be invoked when the Column is tapped or selected.
-    #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
-    select_action: Option<Action>,
-    /// Style hint for Column.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    style: Option<ContainerStyle>,
-    /// Defines how the content should be aligned vertically within the column.
-    #[serde(
-        rename = "verticalContentAlignment",
-        skip_serializing_if = "Option::is_none"
-    )]
-    vertical_content_alignment: Option<VerticalContentAlignment>,
-    /// When true, draw a separating line between this column and the previous column.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    separator: Option<bool>,
-    /// Controls the amount of spacing between this column and the preceding column.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    spacing: Option<Spacing>,
-    /// "auto", "stretch", a number representing relative width of the column in the column group, or in version 1.1 and higher, a specific pixel width, like "50px".
-    #[serde(skip_serializing_if = "Option::is_none")]
-    width: Option<serde_json::Value>,
-    /// A unique identifier associated with the item.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<String>,
-}
-
-impl From<&Self> for Column {
-    fn from(item: &Self) -> Self {
-        item.clone()
-    }
-}
-
-impl From<&mut Self> for Column {
-    fn from(item: &mut Self) -> Self {
-        item.clone()
-    }
-}
-
-impl Column {
-    /// Creates new Column
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            items: vec![],
-            select_action: None,
-            style: None,
-            vertical_content_alignment: None,
-            separator: None,
-            spacing: None,
-            width: None,
-            id: None,
-        }
-    }
-
-    /// Adds element to column
-    pub fn add_element(&mut self, item: CardElement) -> Self {
-        self.items.push(item);
-        self.into()
-    }
-
-    /// Sets separator
-    pub fn set_separator(&mut self, s: bool) -> Self {
-        self.separator = Some(s);
-        self.into()
-    }
-
-    /// Sets `VerticalContentAlignment`
-    pub fn set_vertical_alignment(&mut self, s: VerticalContentAlignment) -> Self {
-        self.vertical_content_alignment = Some(s);
-        self.into()
-    }
-
-    /// Sets width
-    pub fn set_width<T: Into<String>>(&mut self, s: T) -> Self {
-        self.width = Some(serde_json::Value::String(s.into()));
-        self.into()
-    }
-}
-
-/// Describes a Fact in a `FactSet` as a key/value pair.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Fact {
-    /// The title of the fact.
-    title: String,
-    /// The value of the fact.
-    value: String,
-}
-
-/// Available color options
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Color {
-    Default,
-    Dark,
-    Light,
-    Accent,
-    Good,
-    Warning,
-    Attention,
-}
-
-/// Container Styles
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ContainerStyle {
-    Default,
-    Emphasis,
-    Good,
-    Attention,
-    Warning,
-    Accent,
-}
-
-/// Spacing options
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Spacing {
-    #[serde(alias = "default")]
-    Default,
-    #[serde(alias = "none")]
-    None,
-    #[serde(alias = "small")]
-    Small,
-    #[serde(alias = "medium")]
-    Medium,
-    #[serde(alias = "large")]
-    Large,
-    #[serde(alias = "extraLarge")]
-    ExtraLarge,
-    #[serde(alias = "padding")]
-    Padding,
-}
-
-/// Choice Input Style
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ChoiceInputStyle {
-    Compact,
-    Expanded,
-}
-
-/// Vertical alignment of content
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum VerticalContentAlignment {
-    Top,
-    Center,
-    Bottom,
-}
-
-/// Text Input Style
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum TextInputStyle {
-    Text,
-    Tel,
-    Url,
-    Email,
-}
-
-/// Height
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Height {
-    Auto,
-    Stretch,
-}
-
-/// Image Style
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ImageStyle {
-    Default,
-    Person,
-}
-
-/// Text Weight
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Weight {
-    Default,
-    Lighter,
-    Bolder,
-}
-
-/// Type of font to use for rendering
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum FontType {
-    Default,
-    Monospace,
-}
-
-/// Text Size
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Size {
-    #[serde(alias = "Default")]
-    Default,
-    #[serde(alias = "Small")]
-    Small,
-    #[serde(alias = "Medium")]
-    Medium,
-    #[serde(alias = "Large")]
-    Large,
-    #[serde(alias = "ExtraLarge")]
-    ExtraLarge,
-}
-
-/// Image Size
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ImageSize {
-    #[serde(alias = "Auto")]
-    Auto,
-    #[serde(alias = "Stretch")]
-    Stretch,
-    #[serde(alias = "Small")]
-    Small,
-    #[serde(alias = "Medium")]
-    Medium,
-    #[serde(alias = "Large")]
-    Large,
-}
-
-/// Controls how this element is horizontally positioned within its parent.
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum HorizontalAlignment {
-    Left,
-    Center,
-    Right,
-}
-
-/// Available Card Actions
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "type")]
-pub enum Action {
-    /// Gathers input fields, merges with optional data field, and sends an event to the client. It is up to the client to determine how this data is processed. For example: With `BotFramework` bots, the client would send an activity through the messaging medium to the bot.
-    #[serde(rename = "Action.Submit")]
-    Submit {
-        /// Initial data that input fields will be combined with. These are essentially ‘hidden’ properties.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        data: Option<HashMap<String, String>>,
-        /// Label for button or link that represents this action.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        title: Option<String>,
-        /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        style: Option<ActionStyle>,
-    },
-    /// When invoked, show the given url either by launching it in an external web browser or showing within an embedded web browser.
-    #[serde(rename = "Action.OpenUrl")]
-    OpenUrl {
-        /// The URL to open.
-        url: String,
-        /// Label for button or link that represents this action.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        title: Option<String>,
-        /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        style: Option<ActionStyle>,
-    },
-    /// Defines an `AdaptiveCard` which is shown to the user when the button or link is clicked.
-    #[serde(rename = "Action.ShowCard")]
-    ShowCard {
-        /// The Adaptive Card to show.
-        card: AdaptiveCard,
-        /// Label for button or link that represents this action.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        title: Option<String>,
-        /// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        style: Option<ActionStyle>,
-    },
-}
-
-/// Controls the style of an Action, which influences how the action is displayed, spoken, etc.
-#[allow(missing_docs)]
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ActionStyle {
-    /// Action is displayed as normal
-    #[default]
-    Default,
-    /// Action is displayed with a positive style (typically the button becomes accent color)
-    Positive,
-    /// Action is displayed with a destructive style (typically the button becomes red)
-    Destructive,
-}
-
-/// Describes a choice for use in a `ChoiceSet`.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct Choice {
-    /// Text to display.
-    pub title: String,
-    /// The raw value for the choice. **NOTE:** do not use a , in the value, since a `ChoiceSet` with isMultiSelect set to true returns a comma-delimited string of choice values.
-    pub value: String,
-}
-
-fn default_version() -> String {
-    "1.1".to_string()
 }
