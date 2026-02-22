@@ -279,11 +279,16 @@ impl Event {
     }
 
     fn target_global_id(activity: &Activity) -> Result<String, error::Error> {
-        activity
+        let target = activity
             .target
+            .as_ref()
+            .ok_or(crate::error::Error::Api("Missing target in activity"))?;
+        // Prefer the base64 global_id if present, otherwise fall back to the
+        // conversation UUID (target.id) which will be converted downstream.
+        Ok(target
+            .global_id
             .clone()
-            .and_then(|t| t.global_id)
-            .ok_or(crate::error::Error::Api("Missing target id in activity"))
+            .unwrap_or_else(|| target.id.clone()))
     }
 
     /// Get the UUID of the room the Space created event corresponds to.
@@ -743,5 +748,87 @@ mod tests {
     fn test_message_activity_is_created() {
         assert!(MessageActivity::Posted.is_created());
         assert!(!MessageActivity::Deleted.is_created());
+    }
+
+    #[test]
+    fn test_target_global_id_with_global_id() {
+        // When global_id is present, it should be used
+        let event = Event {
+            data: EventData {
+                event_type: "conversation.activity".to_string(),
+                activity: Some(Activity {
+                    verb: "delete".to_string(),
+                    id: "activity-uuid".to_string(),
+                    target: Some(Target {
+                        id: "7ac382f0-3dc0-11ea-a868-db4bb90b9509".to_string(),
+                        object_type: "conversation".to_string(),
+                        url: "https://example.com".to_string(),
+                        participants: None,
+                        activities: None,
+                        tags: vec![],
+                        global_id: Some("Y2lzY29zcGFyazovL3VzL1JPT00vN2FjMzgyZjAtM2RjMC0xMWVhLWE4NjgtZGI0YmI5MGI5NTA5".to_string()),
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let global_id = event.try_global_id().unwrap();
+        // Should use the base64 global_id from the target
+        assert_eq!(
+            global_id.id(),
+            "Y2lzY29zcGFyazovL3VzL1JPT00vN2FjMzgyZjAtM2RjMC0xMWVhLWE4NjgtZGI0YmI5MGI5NTA5"
+        );
+    }
+
+    #[test]
+    fn test_target_global_id_falls_back_to_target_id() {
+        // When global_id is None, should fall back to target.id (conversation UUID)
+        let event = Event {
+            data: EventData {
+                event_type: "conversation.activity".to_string(),
+                activity: Some(Activity {
+                    verb: "delete".to_string(),
+                    id: "activity-uuid".to_string(),
+                    target: Some(Target {
+                        id: "7ac382f0-3dc0-11ea-a868-db4bb90b9509".to_string(),
+                        object_type: "conversation".to_string(),
+                        url: "https://example.com".to_string(),
+                        participants: None,
+                        activities: None,
+                        tags: vec![],
+                        global_id: None,
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // Should succeed (not error) by falling back to target.id
+        let global_id = event.try_global_id().unwrap();
+        // The UUID should be base64-encoded by new_with_cluster_unchecked
+        assert_ne!(global_id.id(), "7ac382f0-3dc0-11ea-a868-db4bb90b9509");
+        assert!(!global_id.id().is_empty());
+    }
+
+    #[test]
+    fn test_target_global_id_errors_when_no_target() {
+        // When target is completely absent, should error
+        let event = Event {
+            data: EventData {
+                event_type: "conversation.activity".to_string(),
+                activity: Some(Activity {
+                    verb: "delete".to_string(),
+                    id: "activity-uuid".to_string(),
+                    target: None,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(event.try_global_id().is_err());
     }
 }
