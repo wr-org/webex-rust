@@ -85,8 +85,68 @@ const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_DEVICE_NAME: &str = "rust-client";
 const DEVICE_SYSTEM_NAME: &str = "rust-spark-client";
 
+// Maximum number of `rel="next"` Link-header redirects the pagination loop will
+// follow in a single list call. Acts as a safety cap against server-side
+// pagination bugs that would otherwise loop forever. Tests override this with a
+// much smaller value so they can exercise the cap quickly.
+#[cfg(not(test))]
+const MAX_PAGES: usize = 100;
+#[cfg(test)]
+const MAX_PAGES: usize = 5;
+
 /// Web Socket Stream type
 pub type WStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+/// Parse an HTTP `Link` response header and return the URL of the entry
+/// whose link parameters contain `rel="next"` (or `rel=next`).
+///
+/// Webex paginates list responses with headers such as:
+/// `Link: <https://webexapis.com/v1/rooms?cursor=p2>; rel="next"`.
+///
+/// All other `rel` values (`prev`, `first`, `last`, custom) are ignored. A
+/// missing or malformed header simply yields `None` rather than an error.
+fn parse_next_link(header: &str) -> Option<String> {
+    // Top-level split on commas, ignoring commas inside `<...>` brackets so URLs
+    // containing literal commas are not torn in half.
+    let mut depth: i32 = 0;
+    let mut start = 0_usize;
+    let mut entries: Vec<&str> = Vec::new();
+    for (idx, ch) in header.char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            ',' if depth == 0 => {
+                entries.push(&header[start..idx]);
+                start = idx + 1;
+            }
+            _ => {}
+        }
+    }
+    entries.push(&header[start..]);
+
+    for entry in entries {
+        let entry = entry.trim();
+        let Some(url_start) = entry.find('<') else {
+            continue;
+        };
+        let after = &entry[url_start + 1..];
+        let Some(url_end) = after.find('>') else {
+            continue;
+        };
+        let url = &after[..url_end];
+        let params = &after[url_end + 1..];
+        for param in params.split(';') {
+            let param = param.trim();
+            if let Some(rel_value) = param.strip_prefix("rel=") {
+                let rel = rel_value.trim().trim_matches('"');
+                if rel.eq_ignore_ascii_case("next") {
+                    return Some(url.to_owned());
+                }
+            }
+        }
+    }
+    None
+}
 
 /// Webex API Client
 #[derive(Clone)]
@@ -232,6 +292,7 @@ impl WebexEventStream {
     }
 }
 
+#[derive(Clone, Copy)]
 enum AuthorizationType<'a> {
     None,
     Bearer(&'a str),
@@ -375,6 +436,21 @@ where {
         params: Option<impl Serialize>,
         body: Option<Body<impl Serialize>>,
     ) -> Result<T, Error> {
+        self.rest_api_with_link(http_method, url, auth, params, body)
+            .await
+            .map(|(parsed, _link)| parsed)
+    }
+
+    /// Same as [`Self::rest_api`] but also returns the value of the `Link`
+    /// response header (if any) so callers can implement pagination.
+    async fn rest_api_with_link<T: DeserializeOwned>(
+        &self,
+        http_method: reqwest::Method,
+        url: &str,
+        auth: AuthorizationType<'_>,
+        params: Option<impl Serialize>,
+        body: Option<Body<impl Serialize>>,
+    ) -> Result<(T, Option<String>), Error> {
         let url_trimmed = url.split('?').next().unwrap_or(url);
         let prefix = self
             .host_prefix
@@ -394,99 +470,175 @@ where {
             }
             None => {}
         }
-        match auth {
-            AuthorizationType::None => {}
-            AuthorizationType::Bearer(token) => {
-                request_builder = request_builder.bearer_auth(token);
-            }
-            AuthorizationType::Basic { username, password } => {
-                request_builder = request_builder.basic_auth(username, Some(password));
-            }
-        }
+        request_builder = apply_auth(request_builder, auth);
         let res = request_builder.send().await?;
+        let link = extract_link_header(&res);
+        let parsed = handle_response::<T>(res, &full_url).await?;
+        Ok((parsed, link))
+    }
 
-        // Check HTTP status first
-        let status = res.status();
-        if !status.is_success() {
-            let error_text = res.text().await?;
+    /// Issue a `GET` request against an absolute URL, bypassing the
+    /// [`Self::host_prefix`] map. Used by the pagination loop to follow
+    /// `rel="next"` Link-header URLs verbatim. Returns the deserialized body
+    /// and the response's `Link` header (if any).
+    async fn get_absolute<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        auth: AuthorizationType<'_>,
+    ) -> Result<(T, Option<String>), Error> {
+        let mut request_builder = self.web_client.request(reqwest::Method::GET, url);
+        request_builder = apply_auth(request_builder, auth);
+        let res = request_builder.send().await?;
+        let link = extract_link_header(&res);
+        let parsed = handle_response::<T>(res, url).await?;
+        Ok((parsed, link))
+    }
 
-            // Try to parse as JSON error response first
-            if let Ok(json_error) = serde_json::from_str::<serde_json::Value>(&error_text) {
-                if let Some(message) = json_error.get("message").and_then(|m| m.as_str()) {
-                    // Team 404 errors are expected when user doesn't have access - log as debug
-                    if status == StatusCode::NOT_FOUND
-                        && full_url.contains("/teams/")
-                        && message.contains("Could not find teams")
-                    {
-                        debug!(
-                            "HTTP {} error for {}: {} (expected when not a team member)",
-                            status.as_u16(),
-                            full_url,
-                            message
-                        );
-                    } else {
-                        warn!(
-                            "HTTP {} error for {}: {}",
-                            status.as_u16(),
-                            full_url,
-                            message
-                        );
-                    }
-                    return Err(Error::StatusText(status, message.to_string()));
+    /// Issue a `GET` against a list endpoint and transparently follow every
+    /// `rel="next"` Link-header redirect until the server stops paginating or
+    /// the [`MAX_PAGES`] safety cap is hit. Each page's `items` (or `devices`,
+    /// for endpoints that use that wrapper) are concatenated into the returned
+    /// `Vec<T>` in server order.
+    async fn api_get_paginated<T: Gettable + DeserializeOwned>(
+        &self,
+        rest_method: &str,
+        params: Option<impl Serialize>,
+        auth: AuthorizationType<'_>,
+    ) -> Result<Vec<T>, Error> {
+        let mut acc: Vec<T> = Vec::new();
+        let (first, mut next_link_header): (ListResult<T>, Option<String>) = self
+            .rest_api_with_link(reqwest::Method::GET, rest_method, auth, params, BODY_NONE)
+            .await?;
+        acc.extend(first.items.or(first.devices).unwrap_or_default());
+
+        let mut pages: usize = 1;
+        while let Some(header) = next_link_header.take() {
+            let Some(url) = parse_next_link(&header) else {
+                break;
+            };
+            if pages >= MAX_PAGES {
+                return Err(Error::StatusText(
+                    StatusCode::LOOP_DETECTED,
+                    format!("Pagination safety cap of {MAX_PAGES} pages exceeded"),
+                ));
+            }
+            let (page, link): (ListResult<T>, Option<String>) =
+                self.get_absolute(&url, auth).await?;
+            acc.extend(page.items.or(page.devices).unwrap_or_default());
+            next_link_header = link;
+            pages += 1;
+        }
+        Ok(acc)
+    }
+}
+
+/// Apply the chosen [`AuthorizationType`] to a request builder.
+fn apply_auth(
+    request_builder: reqwest::RequestBuilder,
+    auth: AuthorizationType<'_>,
+) -> reqwest::RequestBuilder {
+    match auth {
+        AuthorizationType::None => request_builder,
+        AuthorizationType::Bearer(token) => request_builder.bearer_auth(token),
+        AuthorizationType::Basic { username, password } => {
+            request_builder.basic_auth(username, Some(password))
+        }
+    }
+}
+
+/// Extract the raw value of the HTTP `Link` response header, if present and
+/// well-formed UTF-8. Returns `None` otherwise.
+fn extract_link_header(res: &reqwest::Response) -> Option<String> {
+    res.headers()
+        .get(reqwest::header::LINK)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned)
+}
+
+/// Inspect the HTTP status of a response, log errors, and deserialize the body
+/// as JSON. Shared by [`RestClient::rest_api_with_link`] and
+/// [`RestClient::get_absolute`] so error handling stays in one place.
+async fn handle_response<T: DeserializeOwned>(
+    res: reqwest::Response,
+    full_url: &str,
+) -> Result<T, Error> {
+    // Check HTTP status first
+    let status = res.status();
+    if !status.is_success() {
+        let error_text = res.text().await?;
+
+        // Try to parse as JSON error response first
+        if let Ok(json_error) = serde_json::from_str::<serde_json::Value>(&error_text) {
+            if let Some(message) = json_error.get("message").and_then(|m| m.as_str()) {
+                // Team 404 errors are expected when user doesn't have access - log as debug
+                if status == StatusCode::NOT_FOUND
+                    && full_url.contains("/teams/")
+                    && message.contains("Could not find teams")
+                {
+                    debug!(
+                        "HTTP {} error for {}: {} (expected when not a team member)",
+                        status.as_u16(),
+                        full_url,
+                        message
+                    );
+                } else {
+                    warn!(
+                        "HTTP {} error for {}: {}",
+                        status.as_u16(),
+                        full_url,
+                        message
+                    );
                 }
+                return Err(Error::StatusText(status, message.to_string()));
             }
-
-            // Handle HTML error pages (like 403 from device endpoints)
-            if error_text.starts_with("<!doctype html") || error_text.starts_with("<html") {
-                let clean_error =
-                    if error_text.contains("<title>") && error_text.contains("</title>") {
-                        // Extract title from HTML
-                        let start = error_text.find("<title>").unwrap() + 7;
-                        let end = error_text.find("</title>").unwrap();
-                        error_text[start..end].to_string()
-                    } else {
-                        format!("HTTP {} - HTML error page returned", status.as_u16())
-                    };
-                debug!(
-                    "HTTP {} error for {}: {}",
-                    status.as_u16(),
-                    full_url,
-                    clean_error
-                );
-                return Err(Error::StatusText(status, clean_error));
-            }
-
-            // Fallback to generic HTTP error
-            // Device/mercury endpoints returning 403 indicate missing OAuth scopes
-            if status.as_u16() == 403
-                && (full_url.contains("u2c.wbx2.com") || full_url.contains("wdm"))
-            {
-                error!(
-                    "HTTP 403 for {full_url}: {error_text} - likely missing required OAuth scopes"
-                );
-            } else {
-                error!(
-                    "HTTP {} error for {}: {}",
-                    status.as_u16(),
-                    full_url,
-                    error_text
-                );
-            }
-            return Err(Error::StatusText(status, error_text));
         }
 
-        // Get response text for successful responses
-        let response_text = res.text().await?;
-        debug!("API Response for {full_url}: {response_text}");
+        // Handle HTML error pages (like 403 from device endpoints)
+        if error_text.starts_with("<!doctype html") || error_text.starts_with("<html") {
+            let clean_error = if error_text.contains("<title>") && error_text.contains("</title>") {
+                // Extract title from HTML
+                let start = error_text.find("<title>").unwrap() + 7;
+                let end = error_text.find("</title>").unwrap();
+                error_text[start..end].to_string()
+            } else {
+                format!("HTTP {} - HTML error page returned", status.as_u16())
+            };
+            debug!(
+                "HTTP {} error for {}: {}",
+                status.as_u16(),
+                full_url,
+                clean_error
+            );
+            return Err(Error::StatusText(status, clean_error));
+        }
 
-        // Parse the response
-        match serde_json::from_str(&response_text) {
-            Ok(parsed) => Ok(parsed),
-            Err(e) => {
-                error!("Failed to parse API response for {full_url}: {e}");
-                error!("Raw response: {response_text}");
-                Err(e.into())
-            }
+        // Fallback to generic HTTP error
+        // Device/mercury endpoints returning 403 indicate missing OAuth scopes
+        if status.as_u16() == 403 && (full_url.contains("u2c.wbx2.com") || full_url.contains("wdm"))
+        {
+            error!("HTTP 403 for {full_url}: {error_text} - likely missing required OAuth scopes");
+        } else {
+            error!(
+                "HTTP {} error for {}: {}",
+                status.as_u16(),
+                full_url,
+                error_text
+            );
+        }
+        return Err(Error::StatusText(status, error_text));
+    }
+
+    // Get response text for successful responses
+    let response_text = res.text().await?;
+    debug!("API Response for {full_url}: {response_text}");
+
+    // Parse the response
+    match serde_json::from_str(&response_text) {
+        Ok(parsed) => Ok(parsed),
+        Err(e) => {
+            error!("Failed to parse API response for {full_url}: {e}");
+            error!("Raw response: {response_text}");
+            Err(e.into())
         }
     }
 }
@@ -740,15 +892,18 @@ impl Webex {
     }
 
     /// Get all rooms from all organizations that the client belongs to.
+    ///
     /// Will be slow as does multiple API calls (one to get teamless rooms, one to get teams, then
-    /// one per team).
+    /// one per team). Each per-team call automatically follows `rel="next"`
+    /// Link headers, so teams owning more rooms than fit in a single Webex
+    /// page are fully enumerated.
     pub async fn get_all_rooms(&self) -> Result<Vec<Room>, Error> {
         let (mut all_rooms, teams) = try_join!(self.list(), self.list::<Team>())?;
         let futures: Vec<_> = teams
             .into_iter()
             .map(|team| {
                 let params = [("teamId", team.id)];
-                self.client.api_get::<ListResult<Room>>(
+                self.client.api_get_paginated::<Room>(
                     Room::API_ENDPOINT,
                     Some(params),
                     AuthorizationType::Bearer(&self.token),
@@ -756,8 +911,8 @@ impl Webex {
             })
             .collect();
         let teams_rooms = try_join_all(futures).await?;
-        for room in teams_rooms {
-            all_rooms.extend(room.items.or(room.devices).unwrap_or_else(Vec::new));
+        for rooms in teams_rooms {
+            all_rooms.extend(rooms);
         }
         Ok(all_rooms)
     }
@@ -861,31 +1016,46 @@ impl Webex {
             .await
     }
 
-    /// List resources of a type
+    /// List resources of a type.
+    ///
+    /// Paginated Webex responses are followed transparently: every page
+    /// reachable via the `Link: <url>; rel="next"` response header is fetched
+    /// and its items concatenated into the returned `Vec<T>` in server order.
+    /// As a result this may issue many HTTP round-trips for large workspaces.
+    /// Use [`Self::list_with_params`] with a server-side filter (e.g. a `max`,
+    /// `teamId`, or `roomType` parameter) to bound the page count when needed.
+    ///
+    /// To guard against server-side pagination bugs, the loop is capped at an
+    /// internal `MAX_PAGES` constant; reaching the cap returns
+    /// [`Error::StatusText`] with status `508 LOOP_DETECTED`.
     pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
         self.client
-            .api_get::<ListResult<T>>(
+            .api_get_paginated::<T>(
                 T::API_ENDPOINT,
                 None::<()>,
                 AuthorizationType::Bearer(&self.token),
             )
             .await
-            .map(|result| result.items.or(result.devices).unwrap_or_default())
     }
 
-    /// List resources of a type, with parameters
+    /// List resources of a type, with parameters.
+    ///
+    /// The supplied `list_params` are sent only with the first request; once
+    /// the server returns a `Link: <url>; rel="next"` header, that absolute URL
+    /// (already containing the server's cursor) is followed verbatim for every
+    /// subsequent page. See [`Self::list`] for notes on cost and the internal
+    /// `MAX_PAGES` safety cap.
     pub async fn list_with_params<T: Gettable + DeserializeOwned>(
         &self,
         list_params: T::ListParams<'_>,
     ) -> Result<Vec<T>, Error> {
         self.client
-            .api_get::<ListResult<T>>(
+            .api_get_paginated::<T>(
                 T::API_ENDPOINT,
                 Some(list_params),
                 AuthorizationType::Bearer(&self.token),
             )
             .await
-            .map(|result| result.items.or(result.devices).unwrap_or_default())
     }
 
     /// Get the current user's ID, caching it for future calls
@@ -1520,5 +1690,339 @@ mod tests {
                 .contains("Cannot leave a 1:1 direct message room"));
         }
         room_mock.assert_async().await;
+    }
+
+    // ------------------------------------------------------------------------
+    // Pagination tests (`Link: <...>; rel="next"` auto-following)
+    // ------------------------------------------------------------------------
+
+    /// Build a minimal `Webex` whose `RestClient.host_prefix` routes the given
+    /// endpoint paths at the mock server. Pagination follows absolute URLs
+    /// returned in `Link` headers and therefore needs no prefix mapping for
+    /// subsequent pages.
+    fn paginated_webex(server: &ServerGuard, endpoints: &[&str]) -> Webex {
+        let mut host_prefix = HashMap::new();
+        for ep in endpoints {
+            host_prefix.insert((*ep).to_string(), server.url());
+        }
+        let rest_client = RestClient {
+            host_prefix,
+            web_client: reqwest::Client::new(),
+        };
+        let device = DeviceData {
+            url: Some("test_url".to_string()),
+            ws_url: Some("ws://test".to_string()),
+            device_name: Some("test_device".to_string()),
+            device_type: Some("DESKTOP".to_string()),
+            localized_model: Some("rust-sdk-test".to_string()),
+            modification_time: Some(chrono::Utc::now()),
+            model: Some("rust-sdk-test".to_string()),
+            name: Some(format!(
+                "rust-sdk-test-pagination-{}",
+                COUNTER.fetch_add(1, Ordering::SeqCst)
+            )),
+            system_name: Some("rust-sdk-test".to_string()),
+            system_version: Some("0.1.0".to_string()),
+        };
+        Webex {
+            id: 1,
+            client: rest_client,
+            token: "test_token".to_string(),
+            device,
+            user_id: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn room_json(id: &str, title: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "title": title,
+            "type": "group",
+            "isLocked": false,
+            "lastActivity": "2024-01-01T00:00:00.000Z",
+            "creatorId": "test_person_id",
+            "created": "2024-01-01T00:00:00.000Z",
+        })
+    }
+
+    #[test]
+    fn parse_next_link_single_next_entry() {
+        let header = "<https://example.com/v1/rooms?cursor=abc>; rel=\"next\"";
+        assert_eq!(
+            parse_next_link(header).as_deref(),
+            Some("https://example.com/v1/rooms?cursor=abc"),
+        );
+    }
+
+    #[test]
+    fn parse_next_link_multi_rel_picks_next() {
+        let header = concat!(
+            "<https://example.com/v1/rooms?cursor=p1>; rel=\"prev\", ",
+            "<https://example.com/v1/rooms?cursor=p2>; rel=\"next\", ",
+            "<https://example.com/v1/rooms?cursor=p3>; rel=\"last\""
+        );
+        assert_eq!(
+            parse_next_link(header).as_deref(),
+            Some("https://example.com/v1/rooms?cursor=p2"),
+        );
+    }
+
+    #[test]
+    fn parse_next_link_no_next_returns_none() {
+        let header = "<https://example.com/v1/rooms?cursor=p1>; rel=\"prev\", \
+             <https://example.com/v1/rooms?cursor=p3>; rel=\"last\"";
+        assert!(parse_next_link(header).is_none());
+    }
+
+    #[test]
+    fn parse_next_link_malformed_returns_none() {
+        assert!(parse_next_link("not a real link header").is_none());
+        assert!(parse_next_link("").is_none());
+        assert!(parse_next_link("<broken-no-closing-bracket; rel=\"next\"").is_none());
+    }
+
+    #[test]
+    fn parse_next_link_unquoted_rel() {
+        let header = "<https://example.com/v1/rooms?cursor=p2>; rel=next";
+        assert_eq!(
+            parse_next_link(header).as_deref(),
+            Some("https://example.com/v1/rooms?cursor=p2"),
+        );
+    }
+
+    #[tokio::test]
+    async fn list_follows_link_header_to_completion() {
+        let mut server = mockito::Server::new_async().await;
+        let next_url = format!("{}/rooms?cursor=p2", server.url());
+
+        let page1 = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::Missing)
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_header("Link", &format!("<{next_url}>; rel=\"next\""))
+            .with_body(json!({ "items": [room_json("r1", "Room 1")] }).to_string())
+            .create_async()
+            .await;
+
+        let page2 = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::UrlEncoded("cursor".into(), "p2".into()))
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "items": [room_json("r2", "Room 2")] }).to_string())
+            .create_async()
+            .await;
+
+        let webex = paginated_webex(&server, &["rooms"]);
+        let rooms = webex.list::<Room>().await.expect("list should succeed");
+
+        assert_eq!(
+            rooms.iter().map(|r| r.id.clone()).collect::<Vec<_>>(),
+            vec!["r1".to_string(), "r2".to_string()],
+        );
+        page1.assert_async().await;
+        page2.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn list_single_page_no_link_header_returns_items() {
+        let mut server = mockito::Server::new_async().await;
+
+        let only_page = server
+            .mock("GET", "/teams")
+            .match_query(mockito::Matcher::Missing)
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "items": [
+                        { "id": "t1", "name": "Team 1", "created": "2024-01-01T00:00:00.000Z" },
+                        { "id": "t2", "name": "Team 2", "created": "2024-01-01T00:00:00.000Z" },
+                        { "id": "t3", "name": "Team 3", "created": "2024-01-01T00:00:00.000Z" },
+                    ]
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let webex = paginated_webex(&server, &["teams"]);
+        let teams = webex.list::<Team>().await.expect("list should succeed");
+
+        assert_eq!(
+            teams.iter().map(|t| t.id.clone()).collect::<Vec<_>>(),
+            vec!["t1".to_string(), "t2".to_string(), "t3".to_string()],
+        );
+        only_page.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn list_malformed_link_header_terminates() {
+        let mut server = mockito::Server::new_async().await;
+
+        let only_page = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::Missing)
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_header("Link", "not a real link header")
+            .with_body(json!({ "items": [room_json("r1", "Only Room")] }).to_string())
+            .expect(1)
+            .create_async()
+            .await;
+
+        let webex = paginated_webex(&server, &["rooms"]);
+        let rooms = webex
+            .list::<Room>()
+            .await
+            .expect("malformed Link header must not cause an error");
+
+        assert_eq!(rooms.len(), 1);
+        assert_eq!(rooms[0].id, "r1");
+        only_page.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn list_safety_cap_returns_error() {
+        let mut server = mockito::Server::new_async().await;
+        // Always point `next` back to the same endpoint to force a loop.
+        let next_url = format!("{}/rooms?cursor=loop", server.url());
+
+        // First request: no query.
+        let initial = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::Missing)
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_header("Link", &format!("<{next_url}>; rel=\"next\""))
+            .with_body(json!({ "items": [room_json("r0", "Page 0")] }).to_string())
+            .expect(1)
+            .create_async()
+            .await;
+
+        // Follow-up requests: cursor=loop, always returns rel="next" pointing
+        // at itself. With MAX_PAGES = 5 (test override) the helper should
+        // follow at most 4 such follow-ups before erroring.
+        let loop_page = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::UrlEncoded("cursor".into(), "loop".into()))
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_header("Link", &format!("<{next_url}>; rel=\"next\""))
+            .with_body(json!({ "items": [room_json("rloop", "Loop")] }).to_string())
+            .expect_at_least(1)
+            .create_async()
+            .await;
+
+        let webex = paginated_webex(&server, &["rooms"]);
+        let result = webex.list::<Room>().await;
+
+        match result {
+            Err(Error::StatusText(status, msg)) => {
+                assert_eq!(status, StatusCode::LOOP_DETECTED);
+                assert!(
+                    msg.contains("Pagination safety cap"),
+                    "unexpected error message: {msg}"
+                );
+            }
+            other => panic!("expected pagination cap error, got {other:?}"),
+        }
+        initial.assert_async().await;
+        loop_page.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn get_all_rooms_paginates_team_rooms() {
+        let mut server = mockito::Server::new_async().await;
+        let team_next_url = format!("{}/rooms?teamId=T1&cursor=p2", server.url());
+
+        // Teamless rooms (called via `self.list::<Room>()`)
+        let teamless = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::Missing)
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "items": [room_json("r0", "Teamless Room")] }).to_string())
+            .create_async()
+            .await;
+
+        // Teams list
+        let teams_mock = server
+            .mock("GET", "/teams")
+            .match_query(mockito::Matcher::Missing)
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "items": [
+                        { "id": "T1", "name": "Team 1", "created": "2024-01-01T00:00:00.000Z" }
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Team T1 rooms — page 1 with rel="next"
+        let team_page1 = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::UrlEncoded("teamId".into(), "T1".into()))
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_header("Link", &format!("<{team_next_url}>; rel=\"next\""))
+            .with_body(json!({ "items": [room_json("tr1", "Team Room 1")] }).to_string())
+            .create_async()
+            .await;
+
+        // Team T1 rooms — page 2 (followed via absolute URL), no further Link
+        let team_page2 = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("teamId".into(), "T1".into()),
+                mockito::Matcher::UrlEncoded("cursor".into(), "p2".into()),
+            ]))
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "items": [room_json("tr2", "Team Room 2")] }).to_string())
+            .create_async()
+            .await;
+
+        let webex = paginated_webex(&server, &["rooms", "teams"]);
+        let rooms = webex
+            .get_all_rooms()
+            .await
+            .expect("get_all_rooms should succeed");
+
+        let ids: Vec<String> = rooms.iter().map(|r| r.id.clone()).collect();
+        assert!(
+            ids.contains(&"r0".to_string()),
+            "teamless room missing: {ids:?}"
+        );
+        assert!(
+            ids.contains(&"tr1".to_string()),
+            "team page 1 room missing: {ids:?}"
+        );
+        assert!(
+            ids.contains(&"tr2".to_string()),
+            "team page 2 room missing: {ids:?}"
+        );
+        assert_eq!(rooms.len(), 3, "unexpected rooms: {ids:?}");
+
+        teamless.assert_async().await;
+        teams_mock.assert_async().await;
+        team_page1.assert_async().await;
+        team_page2.assert_async().await;
     }
 }

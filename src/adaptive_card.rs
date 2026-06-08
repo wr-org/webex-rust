@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use strum_macros::EnumString;
+
 
 /// Adaptive Card structure for message attachment
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -918,7 +920,8 @@ pub struct Fact {
 
 /// Available color options
 #[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, EnumString)]
+#[strum(ascii_case_insensitive)]
 pub enum Color {
     Default,
     Dark,
@@ -931,7 +934,8 @@ pub enum Color {
 
 /// Container Styles
 #[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, EnumString)]
+#[strum(ascii_case_insensitive)]
 pub enum ContainerStyle {
     Default,
     Emphasis,
@@ -943,7 +947,8 @@ pub enum ContainerStyle {
 
 /// Spacing options
 #[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, EnumString)]
+#[strum(ascii_case_insensitive)]
 pub enum Spacing {
     #[serde(alias = "default")]
     Default,
