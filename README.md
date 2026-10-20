@@ -48,3 +48,19 @@ with the Webex development team.
 ## License
 
 webex-rust is provided under the MIT license. See [LICENSE](LICENSE).
+
+## Development
+
+This crate follows the moving Rust `stable` channel. Refresh the local toolchain
+before running checks so it uses the same release as CI:
+
+```sh
+rustup update stable
+cargo fmt -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
+cargo test --doc
+```
+
+CI updates `stable` before each job. Updating with rustup also refreshes installed
+components such as Clippy, rustfmt, rust-analyzer, and additional target support.

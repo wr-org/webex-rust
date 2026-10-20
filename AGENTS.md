@@ -59,7 +59,7 @@ This is `webex-rust`, an asynchronous Rust library providing a minimal interface
 
 ## Important Notes
 
-- Uses Rust 1.92 toolchain (see `rust-toolchain.toml`)
+- Tracks the moving Rust `stable` channel (see `rust-toolchain.toml`). Run `rustup update stable` before verification to match CI.
 - Very strict clippy configuration with pedantic and nursery lints enabled
 - All public APIs must have documentation (`#![deny(missing_docs)]`)
 - WebSocket connections require device registration and token authentication

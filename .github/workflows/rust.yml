@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Update Rust stable
+        run: rustup update stable --no-self-update
       - name: Run tests
         run: cargo test --verbose
 
@@ -24,6 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Update Rust stable
+        run: rustup update stable --no-self-update
       - name: Run clippy
         run: |
           rustc --version
@@ -35,6 +39,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Update Rust stable
+        run: rustup update stable --no-self-update
       - name: Check formatting
         run: cargo fmt -- --check
 
@@ -43,6 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Update Rust stable
+        run: rustup update stable --no-self-update
       - name: Build crate
         run: cargo build --verbose
       - name: Build examples
@@ -53,5 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Update Rust stable
+        run: rustup update stable --no-self-update
       - name: Check documentation
         run: cargo doc --no-deps --document-private-items
