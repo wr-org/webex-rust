@@ -96,7 +96,7 @@ impl WebexEventStream {
                 match serde_json::from_str(json) {
                     Ok(ev) => Ok(Some(ev)),
                     Err(e) => {
-                        warn!("Couldn't deserialize: {:?}.  Original JSON:\n{}", e, &json);
+                        warn!("Couldn't deserialize: {e:?}.  Original JSON:\n{json}");
                         Err(e.into())
                     }
                 }

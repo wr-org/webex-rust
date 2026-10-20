@@ -24,8 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run clippy (warnings only)
-        run: cargo clippy --all-targets --all-features
+      - name: Run clippy
+        run: |
+          rustc --version
+          cargo clippy --version
+          cargo clippy --all-targets --all-features
 
   fmt:
     name: Format
