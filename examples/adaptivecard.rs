@@ -134,10 +134,10 @@ async fn respond_to_message(webex: &webex::Webex, config: &Config, event: &webex
     // Send event card
     reply.text = Some("Welcome to Adaptivecard Tester Bot".into());
     let mut body = CardElement::container();
-    body.add_element(CardElement::text_block(
+    let _ = body.add_element(CardElement::text_block(
         "Welcome to Adaptivecard Tester Bot!",
     ));
-    body.add_element(
+    let _ = body.add_element(
         CardElement::column_set()
             .add_column(
                 webex::adaptive_card::Column::new()
@@ -154,7 +154,7 @@ async fn respond_to_message(webex: &webex::Webex, config: &Config, event: &webex
                     .add_element(CardElement::input_text("input2", None::<&'static str>)),
             ),
     );
-    body.add_element(CardElement::action_set().add_action_to_set(
+    let _ = body.add_element(CardElement::action_set().add_action_to_set(
         webex::adaptive_card::Action::Submit {
             data: Some(HashMap::from([("id".into(), "init".into())])),
             title: Some("Submit".into()),

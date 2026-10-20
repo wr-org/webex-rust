@@ -3,3 +3,6 @@
 
 Cargo.lock
 .claude/settings.local.json
+
+# IDE
+.idea/
