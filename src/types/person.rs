@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Information about a Webex Teams person/user.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Person {
     /// A unique identifier for the person.
     pub id: String,
@@ -60,4 +60,34 @@ pub struct PhoneNumber {
     pub number_type: String,
     /// Phone number
     pub value: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn person_preserves_camel_case_fields() {
+        let input = json!({
+            "id": "person-id",
+            "emails": ["person@example.com"],
+            "phoneNumbers": [{"type": "work", "value": "123456"}],
+            "displayName": "Test Person",
+            "nickName": "Tester",
+            "firstName": "Test",
+            "lastName": "Person",
+            "avatar": "https://example.com/avatar.png",
+            "orgId": "org-id",
+            "created": "2026-01-01T00:00:00Z",
+            "lastActivity": "2026-10-20T12:00:00Z",
+            "status": "active",
+            "type": "person"
+        });
+        let person: Person = serde_json::from_value(input.clone()).unwrap();
+        assert_eq!(person.first_name.as_deref(), Some("Test"));
+        assert_eq!(person.last_activity, "2026-10-20T12:00:00Z");
+        assert_eq!(person.phone_numbers.as_ref().unwrap()[0].value, "123456");
+        assert_eq!(serde_json::to_value(person).unwrap(), input);
+    }
 }

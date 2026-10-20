@@ -57,8 +57,8 @@ pub enum Error {
 
     /// Rate limiting error with optional retry delay.
     ///
-    /// The API returned HTTP 429 (Too Many Requests). The second field contains
-    /// the number of seconds to wait before retrying, if provided by the API.
+    /// The API returned HTTP 423 (Locked) or 429 (Too Many Requests). The second
+    /// field contains a nonnegative Retry-After delay in seconds, if provided.
     #[error("{0} Retry in: '{1:?}'")]
     Limited(StatusCode, Option<i64>),
 

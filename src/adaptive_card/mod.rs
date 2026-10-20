@@ -32,8 +32,10 @@ pub struct AdaptiveCard {
     /// Must be "`AdaptiveCard`"
     #[serde(rename = "type")]
     pub card_type: String,
-    /// Schema version that this card requires. If a client is lower than this version, the fallbackText will be rendered.
-    /// Maximum version is 1.1
+    /// Schema version required by this card. Defaults to 1.2, which supports
+    /// `ActionSet`, action styles, and text font types. Webex supports up to 1.3;
+    /// see its [card limitations](https://developer.webex.com/messaging/docs/buttons-and-cards#limitations).
+    /// If changed explicitly, ensure the card's content is supported by that version.
     #[serde(default = "default_version")] // Workaround for Webex not always providing it :/
     pub version: String,
     /// The card elements to show in the primary card region.
@@ -67,7 +69,7 @@ impl AdaptiveCard {
     pub fn new() -> Self {
         Self {
             card_type: "AdaptiveCard".to_string(),
-            version: "1.1".to_string(),
+            version: default_version(),
             body: None,
             actions: None,
             select_action: None,
@@ -192,7 +194,7 @@ pub enum ActionStyle {
 }
 
 fn default_version() -> String {
-    "1.1".to_string()
+    "1.2".to_string()
 }
 
 #[cfg(test)]
@@ -206,7 +208,7 @@ mod tests {
             card.schema,
             Some("http://adaptivecards.io/schemas/adaptive-card.json".to_string())
         );
-        assert_eq!(card.version, "1.1");
+        assert_eq!(card.version, "1.2");
         assert_eq!(card.card_type, "AdaptiveCard");
         assert!(card.body.is_none());
         assert!(card.actions.is_none());
@@ -306,13 +308,11 @@ mod tests {
         match action_set {
             CardElement::ActionSet {
                 actions,
-                horizontal_alignment,
                 separator,
                 spacing,
                 ..
             } => {
                 assert_eq!(actions.len(), 0);
-                assert_eq!(horizontal_alignment, None);
                 assert_eq!(separator, None);
                 assert_eq!(spacing, None);
             }

@@ -6,7 +6,7 @@ use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 
 /// Attachment for a message (typically an Adaptive Card).
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Attachment {
     /// The content type of the attachment.

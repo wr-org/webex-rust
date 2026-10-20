@@ -113,7 +113,8 @@ pub enum CardElement {
         color: Option<Color>,
         /// Controls the horizontal text alignment.
         #[serde(
-            rename = "HorizontalAlignment",
+            rename = "horizontalAlignment",
+            alias = "HorizontalAlignment",
             skip_serializing_if = "Option::is_none"
         )]
         horizontal_alignment: Option<HorizontalAlignment>,
@@ -359,19 +360,13 @@ pub enum CardElement {
         spacing: Option<Spacing>,
     },
 
-    /// Displays a set of actions.
+    /// Displays a set of actions. Requires Adaptive Card schema version 1.2 or later.
     ActionSet {
         /// The array of Action elements to show.
         actions: Vec<Action>,
         /// Specifies the height of the element.
         #[serde(skip_serializing_if = "Option::is_none")]
         height: Option<Height>,
-        /// Controls the horizontal text alignment.
-        #[serde(
-            rename = "HorizontalAlignment",
-            skip_serializing_if = "Option::is_none"
-        )]
-        horizontal_alignment: Option<HorizontalAlignment>,
         /// When true, draw a separating line at the top of the element.
         #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<bool>,
@@ -712,7 +707,10 @@ impl CardElement {
         self.into()
     }
 
-    /// Set Horizontal Alignment
+    /// Set horizontal alignment on a text block or image.
+    ///
+    /// Other element types, including `ActionSet`, have no horizontal alignment
+    /// property in the Adaptive Card schema and are left unchanged.
     #[must_use]
     pub fn set_horizontal_alignment(&mut self, alignment: HorizontalAlignment) -> Self {
         match self {
@@ -721,10 +719,6 @@ impl CardElement {
                 ..
             }
             | Self::Image {
-                horizontal_alignment,
-                ..
-            }
-            | Self::ActionSet {
                 horizontal_alignment,
                 ..
             } => {
@@ -757,13 +751,12 @@ impl CardElement {
         self.into()
     }
 
-    /// Create actionSet
+    /// Create an `ActionSet` for use in cards with version 1.2 or later.
     #[must_use]
     pub const fn action_set() -> Self {
         Self::ActionSet {
             actions: vec![],
             height: None,
-            horizontal_alignment: None,
             separator: None,
             spacing: None,
         }
