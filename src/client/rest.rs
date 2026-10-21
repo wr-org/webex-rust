@@ -1,12 +1,19 @@
 //! Low-level REST client for Webex API requests.
 
-use crate::error::Error;
-use crate::types::{Gettable, ListResult};
+use crate::error::{Error, PaginationError};
+use crate::types::{Continuation, Gettable, ListResult, Page, PaginationOptions};
 use log::{error, trace};
 use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json;
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    marker::PhantomData,
+    sync::OnceLock,
+};
+
+mod pagination;
+use pagination::{next_link, validate_destination};
 
 /// Authorization type for REST requests.
 #[derive(Clone, Copy)]
@@ -221,6 +228,11 @@ impl RestClient {
         body: Option<Body<D>>,
     ) -> Result<R, Error> {
         let response = self.send_request(method, auth, url, query, body).await?;
+        Self::decode_response(response).await
+    }
+
+    /// Decodes a successful response, preserving the shared empty-body behavior.
+    async fn decode_response<R: DeserializeOwned>(response: reqwest::Response) -> Result<R, Error> {
         let response_text = response.text().await?;
         trace!("Response: {response_text}");
         if response_text.is_empty() {
@@ -251,9 +263,22 @@ impl RestClient {
         query: Option<&Q>,
         body: Option<Body<D>>,
     ) -> Result<reqwest::Response, Error> {
+        let response =
+            Self::send_request_with_client(&self.web_client, method, auth, url, query, body)
+                .await?;
+        Self::check_response(response, url).await
+    }
+
+    async fn send_request_with_client<Q: Serialize, D: Serialize>(
+        client: &reqwest::Client,
+        method: &str,
+        auth: AuthorizationType<'_>,
+        url: &str,
+        query: Option<&Q>,
+        body: Option<Body<D>>,
+    ) -> Result<reqwest::Response, Error> {
         trace!("{method} {url}");
-        let mut req = self
-            .web_client
+        let mut req = client
             .request(method.parse().unwrap(), url)
             .header("User-Agent", format!("webex-rust/{}", super::CRATE_VERSION));
         if let Some(params) = query {
@@ -271,7 +296,13 @@ impl RestClient {
             Some(Body::UrlEncoded(data)) => req.form(&data),
             None => req,
         };
-        let response = req.send().await?;
+        Ok(req.send().await?)
+    }
+
+    async fn check_response(
+        response: reqwest::Response,
+        url: &str,
+    ) -> Result<reqwest::Response, Error> {
         let status = response.status();
         if status == StatusCode::LOCKED || status == StatusCode::TOO_MANY_REQUESTS {
             let retry_after = response
@@ -365,6 +396,139 @@ impl RestClient {
             .items
             .or(list_result.devices)
             .unwrap_or_default())
+    }
+
+    /// Fetch a first page with parameters applied exactly once.
+    pub(super) async fn api_get_page<T: Gettable + DeserializeOwned>(
+        &self,
+        params: Option<impl Serialize>,
+        auth: AuthorizationType<'_>,
+    ) -> Result<Page<T>, PaginationError> {
+        let origin = self.pagination_origin::<T>()?;
+        let mut url = origin.clone();
+        if let Some(params) = params {
+            let query = serde_html_form::to_string(params).map_err(Error::from)?;
+            if !query.is_empty() {
+                url.set_query(Some(&query));
+            }
+        }
+        self.fetch_page(url, origin, auth).await
+    }
+
+    fn pagination_origin<T: Gettable>(&self) -> Result<url::Url, PaginationError> {
+        let prefix = self
+            .host_prefix
+            .get(T::API_ENDPOINT)
+            .map_or(super::REST_HOST_PREFIX, String::as_str);
+        url::Url::parse(&format!("{prefix}/{}", T::API_ENDPOINT))
+            .map_err(|_| PaginationError::InvalidContinuation("invalid API origin".into()))
+    }
+
+    pub(super) async fn api_next_page<T: Gettable + DeserializeOwned>(
+        &self,
+        continuation: &Continuation<T>,
+        auth: AuthorizationType<'_>,
+    ) -> Result<Page<T>, PaginationError> {
+        // Revalidate against this client's configuration before attaching auth.
+        let origin = self.pagination_origin::<T>()?;
+        if origin.origin() != continuation.origin.origin() {
+            return Err(PaginationError::InvalidContinuation(
+                "continuation belongs to another API origin".into(),
+            ));
+        }
+        self.fetch_page(continuation.url.clone(), origin, auth)
+            .await
+    }
+
+    async fn fetch_page<T: DeserializeOwned>(
+        &self,
+        mut url: url::Url,
+        origin: url::Url,
+        auth: AuthorizationType<'_>,
+    ) -> Result<Page<T>, PaginationError> {
+        // reqwest cannot override redirect policy per request. Use a pooled,
+        // no-redirect transport for pages, then validate every Location ourselves.
+        // Request construction and status decoding remain shared with other REST calls.
+        static PAGE_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+        let client = PAGE_CLIENT.get_or_init(|| {
+            reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("failed to initialize pagination HTTP client")
+        });
+        let mut redirects = HashSet::new();
+        loop {
+            validate_destination(&origin, &url)?;
+            if !redirects.insert(url.clone()) || redirects.len() > 10 {
+                return Err(PaginationError::InvalidContinuation(
+                    "redirect loop or redirect limit exceeded".into(),
+                ));
+            }
+            let response = Self::send_request_with_client(
+                client,
+                "GET",
+                auth,
+                url.as_str(),
+                None::<&()>,
+                BODY_NONE,
+            )
+            .await?;
+            if matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
+                let location = response
+                    .headers()
+                    .get(reqwest::header::LOCATION)
+                    .and_then(|value| value.to_str().ok())
+                    .ok_or_else(|| {
+                        PaginationError::InvalidContinuation(
+                            "redirect without a valid Location".into(),
+                        )
+                    })?;
+                url = pagination::resolve_destination(&origin, &url, location)?;
+                continue;
+            }
+            let response = Self::check_response(response, url.as_str()).await?;
+            let next = next_link(response.headers(), &origin, &url)?;
+            let body: ListResult<T> = Self::decode_response(response).await?;
+            return Ok(Page {
+                items: body.items.or(body.devices).unwrap_or_default(),
+                continuation: next.map(|url| Continuation {
+                    url,
+                    origin,
+                    resource: PhantomData,
+                }),
+            });
+        }
+    }
+
+    /// Collect through the same first/next page implementation used manually.
+    pub(super) async fn api_list_all<T: Gettable + DeserializeOwned>(
+        &self,
+        params: Option<impl Serialize>,
+        auth: AuthorizationType<'_>,
+        options: PaginationOptions,
+    ) -> Result<Vec<T>, PaginationError> {
+        if options.max_pages == 0 {
+            return Err(PaginationError::Limit { max_pages: 0 });
+        }
+        let mut page = self.api_get_page::<T>(params, auth).await?;
+        let mut items = page.items;
+        let mut visited = HashSet::new();
+        let mut pages = 1;
+        while let Some(next) = page.continuation {
+            // Check loops independently of the caller's request budget.
+            if !visited.insert(next.url.clone()) {
+                return Err(PaginationError::Loop);
+            }
+            if pages >= options.max_pages {
+                return Err(PaginationError::Limit {
+                    max_pages: options.max_pages,
+                });
+            }
+            page = self.api_next_page(&next, auth).await?;
+            items.extend(page.items);
+            pages += 1;
+        }
+        Ok(items)
     }
 
     // Legacy API methods for compatibility with client/mod.rs
@@ -657,6 +821,58 @@ mod tests {
                 "{error:?}"
             );
             mock.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn pagination_preserves_errors_on_later_pages() {
+        let mut server = mockito::Server::new_async().await;
+        let client = RestClient::new_with(
+            HashMap::from([("rooms".to_string(), server.url())]),
+            reqwest::Client::new(),
+        );
+        for status in [403, 423, 429] {
+            let next_url = format!("{}/rooms?cursor={status}", server.url());
+            let first = server
+                .mock("GET", "/rooms")
+                .match_query(Matcher::UrlEncoded("teamId".into(), "T1".into()))
+                .with_header("Link", &format!("<{next_url}>; rel=\"next\""))
+                .with_body(r#"{"items":[]}"#)
+                .create_async()
+                .await;
+            let second = server
+                .mock("GET", format!("/rooms?cursor={status}").as_str())
+                .match_header("authorization", "Bearer test-token")
+                .match_header(
+                    "user-agent",
+                    format!("webex-rust/{}", super::super::CRATE_VERSION).as_str(),
+                )
+                .with_status(status)
+                .with_header("retry-after", "12")
+                .with_body(r#"{"message":"Try later"}"#)
+                .create_async()
+                .await;
+            let error = client
+                .api_list_all::<crate::Room>(
+                    Some([("teamId", "T1")]),
+                    AuthorizationType::Bearer("test-token"),
+                    PaginationOptions::default(),
+                )
+                .await
+                .unwrap_err();
+            match error {
+                PaginationError::Request(Error::StatusText(code, message)) if status == 403 => {
+                    assert_eq!(usize::from(code.as_u16()), status);
+                    assert_eq!(message, "Try later");
+                }
+                PaginationError::Request(Error::Limited(code, delay)) => {
+                    assert_eq!(usize::from(code.as_u16()), status);
+                    assert_eq!(delay, Some(12));
+                }
+                other => panic!("unexpected pagination error: {other:?}"),
+            }
+            first.assert_async().await;
+            second.assert_async().await;
         }
     }
 }

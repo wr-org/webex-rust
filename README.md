@@ -19,6 +19,57 @@ Not all features are fully-fleshed out, particularly the AdaptiveCard
 support (only a few serializations exist, enough to create a form with a
 		few choices, a text box, and a submit button).
 
+## List pagination
+
+`list` and `list_with_params` return one page, preserving existing behavior.
+For caller-controlled pagination, fetch a `Page<T>` and use its opaque
+continuation when ready. Empty pages can still have a continuation:
+
+```rust,no_run
+# async fn example(webex: &webex::Webex) -> Result<(), webex::error::PaginationError> {
+let mut page = webex.list_page::<webex::Room>().await?;
+loop {
+    for room in page.items { println!("{:?}", room.title); }
+    // Stop here to keep the continuation for later, or request the next page.
+    let Some(next) = page.continuation else { break };
+    page = webex.list_next_page(&next).await?;
+}
+# Ok(())
+# }
+```
+
+For complete enumeration, select an explicit page budget:
+
+```rust,no_run
+# async fn example(webex: &webex::Webex) -> Result<(), webex::error::PaginationError> {
+let rooms = webex.list_all_with_params::<webex::Room>(
+    webex::RoomListParams { max: Some(100), ..Default::default() },
+    webex::PaginationOptions { max_pages: 2_000 },
+).await?;
+# Ok(())
+# }
+```
+
+`list_page_with_params` accepts the same resource parameters; `list_all` omits
+filters. `max` always controls Webex's page size, not the total results. Server
+continuations retain their own cursors and filters. All-pages calls return
+`PaginationError::Limit` when the budget is exhausted, `PaginationError::Loop`
+for repeated continuations, and `PaginationError::InvalidContinuation` for
+malformed or unsafe links. They do
+not return partial results or retry errors; manual pagination lets callers
+retain progress and choose their own stopping/retry policy. New pagination APIs
+return `webex::error::PaginationError`; its `Request(Error)` variant preserves
+HTTP, decoding, and serialization failures, including `Error::Limited`.
+The existing exhaustive `Error` enum is unchanged.
+
+`get_all_rooms` enumerates rooms, teams, and each team's rooms with a default
+budget of 1,000 pages per list. It preserves its existing `Error` return type:
+request failures pass through unchanged, while pagination-only failures become
+`Error::Other`. Use `get_all_rooms_with_options` for a custom budget and typed
+`PaginationError` failures.
+Credentials are sent only to the configured origin or the public HTTPS
+`api.ciscospark.com`/`webexapis.com` aliases; redirects use the same validation.
+
 ## Upgrading to 0.11
 
 Client and resource types remain available through their existing imports. Two

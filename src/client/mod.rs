@@ -1,11 +1,12 @@
 //! Main Webex client implementation for interacting with the Webex Teams API.
 
 use crate::adaptive_card::AdaptiveCard;
-use crate::error::Error;
+use crate::error::{Error, PaginationError};
 use crate::types::{
-    Attachment, AttachmentAction, CatalogReply, DeviceData, DevicesReply, Gettable, GlobalId,
-    GlobalIdType, ListResult, Membership, MembershipListParams, Message, MessageEditParams,
-    MessageOut, Organization, Person, Room, RoomType, Team,
+    Attachment, AttachmentAction, CatalogReply, Continuation, DeviceData, DevicesReply, Gettable,
+    GlobalId, GlobalIdType, ListResult, Membership, MembershipListParams, Message,
+    MessageEditParams, MessageOut, Organization, Page, PaginationOptions, Person, Room, RoomType,
+    Team,
 };
 use futures::{future::try_join_all, try_join};
 use log::{debug, error, trace, warn};
@@ -304,25 +305,44 @@ impl Webex {
         self.list().await
     }
 
-    /// Get all rooms from all organizations that the client belongs to.
-    /// Will be slow as does multiple API calls (one to get teamless rooms, one to get teams, then
-    /// one per team).
+    /// Get all rooms, including rooms discovered through team enumeration.
+    ///
+    /// Enumerates all pages of rooms, teams, and each team's rooms using the
+    /// default [`PaginationOptions`]. Existing ordering and duplicates are
+    /// preserved. This may perform many requests; team requests run concurrently.
+    /// Request errors are returned unchanged. Pagination-only failures are returned
+    /// as [`Error::Other`] to preserve this method's existing error type. Use
+    /// [`Self::get_all_rooms_with_options`] for typed [`PaginationError`] failures.
     pub async fn get_all_rooms(&self) -> Result<Vec<Room>, Error> {
-        let (mut all_rooms, teams) = try_join!(self.list(), self.list::<Team>())?;
+        self.get_all_rooms_with_options(PaginationOptions::default())
+            .await
+            .map_err(PaginationError::into_legacy_error)
+    }
+
+    /// Like [`Self::get_all_rooms`], with a page budget per enumeration
+    /// (the initial rooms list, teams list, and each team's rooms list).
+    /// This is not a global request budget across all teams. Errors retain their
+    /// pagination category; request failures wrap the original [`Error`].
+    pub async fn get_all_rooms_with_options(
+        &self,
+        options: PaginationOptions,
+    ) -> Result<Vec<Room>, PaginationError> {
+        let (mut all_rooms, teams) =
+            try_join!(self.list_all(options), self.list_all::<Team>(options))?;
         let futures: Vec<_> = teams
             .into_iter()
             .map(|team| {
                 let params = [("teamId", team.id)];
-                self.client.api_get::<ListResult<Room>>(
-                    Room::API_ENDPOINT,
+                self.client.api_list_all::<Room>(
                     Some(params),
                     AuthorizationType::Bearer(&self.token),
+                    options,
                 )
             })
             .collect();
         let teams_rooms = try_join_all(futures).await?;
-        for room in teams_rooms {
-            all_rooms.extend(room.items.or(room.devices).unwrap_or_else(Vec::new));
+        for rooms in teams_rooms {
+            all_rooms.extend(rooms);
         }
         Ok(all_rooms)
     }
@@ -426,31 +446,134 @@ impl Webex {
             .await
     }
 
-    /// List resources of a type
+    /// List one page of resources, preserving the original bounded behavior.
+    ///
+    /// Discards continuation headers. Use [`Self::list_page`] for caller-controlled
+    /// pagination, or [`Self::list_all`] for explicit complete enumeration.
     pub async fn list<T: Gettable + DeserializeOwned>(&self) -> Result<Vec<T>, Error> {
-        self.client
-            .api_get::<ListResult<T>>(
+        let result: ListResult<T> = self
+            .client
+            .api_get(
                 T::API_ENDPOINT,
                 None::<()>,
                 AuthorizationType::Bearer(&self.token),
             )
-            .await
-            .map(|result| result.items.or(result.devices).unwrap_or_default())
+            .await?;
+        Ok(result.items.or(result.devices).unwrap_or_default())
     }
 
-    /// List resources of a type, with parameters
+    /// List one page with filters. `max` is Webex's page size, not a total limit.
+    /// Continuation headers are discarded, just as in [`Self::list`].
     pub async fn list_with_params<T: Gettable + DeserializeOwned>(
         &self,
         list_params: T::ListParams<'_>,
     ) -> Result<Vec<T>, Error> {
-        self.client
-            .api_get::<ListResult<T>>(
+        let result: ListResult<T> = self
+            .client
+            .api_get(
                 T::API_ENDPOINT,
                 Some(list_params),
                 AuthorizationType::Bearer(&self.token),
             )
+            .await?;
+        Ok(result.items.or(result.devices).unwrap_or_default())
+    }
+
+    /// Fetch the first page without automatically requesting subsequent pages.
+    ///
+    /// An empty page can have a continuation. Only absence of a continuation
+    /// signals completion. Request errors wrap the original [`Error`] in
+    /// [`PaginationError::Request`]. Malformed or unsafe links return
+    /// [`PaginationError::InvalidContinuation`].
+    ///
+    /// ```no_run
+    /// # async fn example(webex: &webex::Webex) -> Result<(), webex::error::PaginationError> {
+    /// let mut page = webex.list_page::<webex::Room>().await?;
+    /// loop {
+    ///     for room in page.items { println!("{:?}", room.title); }
+    ///     // The application can stop here, keeping the continuation for later.
+    ///     let Some(next) = page.continuation else { break };
+    ///     page = webex.list_next_page(&next).await?;
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_page<T: Gettable + DeserializeOwned>(
+        &self,
+    ) -> Result<Page<T>, PaginationError> {
+        self.client
+            .api_get_page(None::<()>, AuthorizationType::Bearer(&self.token))
             .await
-            .map(|result| result.items.or(result.devices).unwrap_or_default())
+    }
+
+    /// Fetch the first page with filters and Webex's `max` page size.
+    /// These parameters are sent only on this request; subsequent pages preserve
+    /// the server's cursor and filters without appending the original parameters.
+    pub async fn list_page_with_params<T: Gettable + DeserializeOwned>(
+        &self,
+        list_params: T::ListParams<'_>,
+    ) -> Result<Page<T>, PaginationError> {
+        self.client
+            .api_get_page(Some(list_params), AuthorizationType::Bearer(&self.token))
+            .await
+    }
+
+    /// Fetch one continuation obtained from this client's page APIs.
+    ///
+    /// The resource type is inferred from the opaque continuation. Destinations
+    /// and HTTP redirects are validated before sending credentials: the configured
+    /// origin is trusted, and HTTPS `api.ciscospark.com` and `webexapis.com` are
+    /// accepted as aliases when using either public API host. Other origins,
+    /// userinfo, fragments, and HTTPS downgrades are rejected. No retries occur.
+    /// Manual callers choose when to stop and must enforce their own budgets.
+    pub async fn list_next_page<T: Gettable + DeserializeOwned>(
+        &self,
+        continuation: &Continuation<T>,
+    ) -> Result<Page<T>, PaginationError> {
+        self.client
+            .api_next_page(continuation, AuthorizationType::Bearer(&self.token))
+            .await
+    }
+
+    /// Explicitly collect all pages in server order, including empty intermediate
+    /// pages, within a caller-selected budget.
+    ///
+    /// Returns [`PaginationError::Limit`] on budget exhaustion and
+    /// [`PaginationError::Loop`] on repeated continuations. Errors discard the
+    /// collected result; use manual pages to retain progress. No retries occur.
+    ///
+    /// ```no_run
+    /// # async fn example(webex: &webex::Webex) -> Result<(), webex::error::PaginationError> {
+    /// let rooms = webex.list_all::<webex::Room>(webex::PaginationOptions {
+    ///     max_pages: 2_000,
+    /// }).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_all<T: Gettable + DeserializeOwned>(
+        &self,
+        options: PaginationOptions,
+    ) -> Result<Vec<T>, PaginationError> {
+        self.client
+            .api_list_all(None::<()>, AuthorizationType::Bearer(&self.token), options)
+            .await
+    }
+
+    /// Collect all pages with filters and a page budget. `max` remains the server
+    /// page size, so this may return more than `max` resources. Parameters are
+    /// applied only to the first page, as in [`Self::list_page_with_params`].
+    pub async fn list_all_with_params<T: Gettable + DeserializeOwned>(
+        &self,
+        list_params: T::ListParams<'_>,
+        options: PaginationOptions,
+    ) -> Result<Vec<T>, PaginationError> {
+        self.client
+            .api_list_all(
+                Some(list_params),
+                AuthorizationType::Bearer(&self.token),
+                options,
+            )
+            .await
     }
 
     /// Get the current user's ID, caching it for future calls
@@ -738,6 +861,7 @@ impl MessageOut {
 #[allow(clippy::significant_drop_tightening)]
 mod tests {
     use super::*;
+    use mockito::Matcher;
     use mockito::ServerGuard;
     use serde_json::json;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1087,5 +1211,481 @@ mod tests {
                 .contains("Cannot leave a 1:1 direct message room"));
         }
         room_mock.assert_async().await;
+    }
+
+    /// Build a minimal `Webex` whose `RestClient.host_prefix` routes the given
+    /// endpoint paths at the mock server. Pagination follows absolute URLs
+    /// returned in `Link` headers and therefore needs no prefix mapping for
+    /// subsequent pages.
+    fn paginated_webex(server: &ServerGuard, endpoints: &[&str]) -> Webex {
+        let mut host_prefix = HashMap::new();
+        for ep in endpoints {
+            host_prefix.insert((*ep).to_string(), server.url());
+        }
+        let rest_client = RestClient {
+            host_prefix,
+            web_client: reqwest::Client::new(),
+        };
+        let device = DeviceData {
+            url: Some("test_url".to_string()),
+            ws_url: Some("ws://test".to_string()),
+            device_name: Some("test_device".to_string()),
+            device_type: Some("DESKTOP".to_string()),
+            localized_model: Some("rust-sdk-test".to_string()),
+            modification_time: Some(chrono::Utc::now()),
+            model: Some("rust-sdk-test".to_string()),
+            name: Some(format!(
+                "rust-sdk-test-pagination-{}",
+                COUNTER.fetch_add(1, Ordering::SeqCst)
+            )),
+            system_name: Some("rust-sdk-test".to_string()),
+            system_version: Some("0.1.0".to_string()),
+        };
+        Webex {
+            id: 1,
+            client: rest_client,
+            token: "test_token".to_string(),
+            device,
+            user_id: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn room_json(id: &str, title: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "title": title,
+            "type": "group",
+            "isLocked": false,
+            "lastActivity": "2024-01-01T00:00:00.000Z",
+            "creatorId": "test_person_id",
+            "created": "2024-01-01T00:00:00.000Z",
+        })
+    }
+
+    #[tokio::test]
+    async fn existing_list_methods_request_only_one_page() {
+        let mut server = mockito::Server::new_async().await;
+        let first = server
+            .mock("GET", "/rooms")
+            .match_query(Matcher::Missing)
+            .with_header("Link", "</rooms?cursor=next>; rel=next")
+            .with_body(json!({"items": [room_json("r1", "Room")]}).to_string())
+            .expect(1)
+            .create_async()
+            .await;
+        let next = server
+            .mock("GET", "/rooms?cursor=next")
+            .expect(0)
+            .create_async()
+            .await;
+        let messages = server
+            .mock("GET", "/messages?roomId=history&max=1")
+            .with_header("Link", "</messages?cursor=more>; rel=next")
+            .with_body(r#"{"items":[{"id":"m1"}]}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let more = server
+            .mock("GET", "/messages?cursor=more")
+            .expect(0)
+            .create_async()
+            .await;
+        let webex = paginated_webex(&server, &["rooms", "messages"]);
+        assert_eq!(webex.list::<Room>().await.unwrap().len(), 1);
+        let mut params = crate::MessageListParams::new("history");
+        params.max = Some(1);
+        assert_eq!(
+            webex
+                .list_with_params::<Message>(params)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        first.assert_async().await;
+        next.assert_async().await;
+        messages.assert_async().await;
+        more.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn manual_pages_preserve_parameters_credentials_and_server_cursor() {
+        let mut server = mockito::Server::new_async().await;
+        let first = server.mock("GET", "/rooms?teamId=T%26+1&max=1")
+            .match_header("authorization", "Bearer test_token")
+            .match_header("user-agent", format!("webex-rust/{CRATE_VERSION}").as_str())
+            .with_header("Link", "</rooms?cursor=previous>; rel=prev")
+            .with_header("Link", "</rooms?cursor=a%2Bb%2F%3D&teamId=server&max=2>; title=\"a,b; \\\"x\\\"\"; rel=\"next last\"")
+            .with_body(json!({"items": [room_json("r1", "Room")]}).to_string())
+            .expect(1).create_async().await;
+        let second = server
+            .mock("GET", "/rooms?cursor=a%2Bb%2F%3D&teamId=server&max=2")
+            .match_header("authorization", "Bearer test_token")
+            .match_header("user-agent", format!("webex-rust/{CRATE_VERSION}").as_str())
+            .with_body(json!({"items": [room_json("r2", "Room")]}).to_string())
+            .expect(1)
+            .create_async()
+            .await;
+        let webex = paginated_webex(&server, &["rooms"]);
+        let page = webex
+            .list_page_with_params::<Room>(crate::RoomListParams {
+                team_id: Some("T& 1"),
+                max: Some(1),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(page.items[0].id, "r1");
+        // Receiving a continuation does not fetch it.
+        assert!(!second.matched_async().await);
+        let page = webex
+            .list_next_page(&page.continuation.unwrap())
+            .await
+            .unwrap();
+        assert_eq!(page.items[0].id, "r2");
+        assert!(page.continuation.is_none());
+        first.assert_async().await;
+        second.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn all_pages_follow_empty_intermediate_pages() {
+        let mut server = mockito::Server::new_async().await;
+        let first = server
+            .mock("GET", "/rooms?max=1")
+            .with_header("Link", "</rooms?cursor=empty>; rel=next")
+            .with_body(json!({"items": [room_json("r1", "Room")]}).to_string())
+            .create_async()
+            .await;
+        let empty = server
+            .mock("GET", "/rooms?cursor=empty")
+            .with_header("Link", "</rooms?cursor=last>; rel=next")
+            .with_body(r#"{"items":[]}"#)
+            .create_async()
+            .await;
+        let last = server
+            .mock("GET", "/rooms?cursor=last")
+            .with_body(json!({"items": [room_json("r2", "Room")]}).to_string())
+            .create_async()
+            .await;
+        let webex = paginated_webex(&server, &["rooms"]);
+        let rooms = webex
+            .list_all_with_params::<Room>(
+                crate::RoomListParams {
+                    max: Some(1),
+                    ..Default::default()
+                },
+                PaginationOptions { max_pages: 3 },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            rooms.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["r1", "r2"]
+        );
+        first.assert_async().await;
+        empty.assert_async().await;
+        last.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn distinct_pages_can_exceed_one_hundred() {
+        let mut server = mockito::Server::new_async().await;
+        let mut mocks = Vec::new();
+        for page in 0..102 {
+            let path = if page == 0 {
+                "/messages".to_owned()
+            } else {
+                format!("/messages?cursor={page}")
+            };
+            let mut mock = server
+                .mock("GET", path.as_str())
+                .with_body(json!({"items":[{"id":page.to_string()}]}).to_string())
+                .expect(1);
+            if page < 101 {
+                mock = mock.with_header(
+                    "Link",
+                    &format!("</messages?cursor={}>; rel=next", page + 1),
+                );
+            }
+            mocks.push(mock.create_async().await);
+        }
+        let webex = paginated_webex(&server, &["messages"]);
+        let items = webex
+            .list_all::<Message>(PaginationOptions { max_pages: 102 })
+            .await
+            .unwrap();
+        assert_eq!(items.len(), 102);
+        assert_eq!(items.last().unwrap().id.as_deref(), Some("101"));
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn budgets_and_loops_have_distinct_errors() {
+        let mut server = mockito::Server::new_async().await;
+        let webex = paginated_webex(&server, &["rooms"]);
+        let first = server
+            .mock("GET", "/rooms")
+            .match_query(Matcher::Missing)
+            .with_header("Link", "</rooms?cursor=loop>; rel=next")
+            .with_body(r#"{"items":[]}"#)
+            .expect(2)
+            .create_async()
+            .await;
+        let looping = server
+            .mock("GET", "/rooms?cursor=loop")
+            .with_header("Link", "</rooms?cursor=loop>; rel=next")
+            .with_body(r#"{"items":[]}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        assert!(matches!(
+            webex
+                .list_all::<Room>(PaginationOptions { max_pages: 0 })
+                .await,
+            Err(PaginationError::Limit { max_pages: 0 })
+        ));
+        assert!(matches!(
+            webex
+                .list_all::<Room>(PaginationOptions { max_pages: 1 })
+                .await,
+            Err(PaginationError::Limit { max_pages: 1 })
+        ));
+        assert!(matches!(
+            webex
+                .list_all::<Room>(PaginationOptions { max_pages: 10 })
+                .await,
+            Err(PaginationError::Loop)
+        ));
+        first.assert_async().await;
+        looping.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn malformed_and_unsafe_links_fail_without_contacting_destination() {
+        let mut server = mockito::Server::new_async().await;
+        let mut unsafe_server = mockito::Server::new_async().await;
+        let forbidden = unsafe_server
+            .mock("GET", Matcher::Any)
+            .expect(0)
+            .create_async()
+            .await;
+        let webex = paginated_webex(&server, &["rooms"]);
+        for link in [
+            format!("<{}/rooms>; rel=next", unsafe_server.url()),
+            "<https://webexapis.com.evil.example/rooms>; rel=next".into(),
+            "not a real link".into(),
+            "<http://[invalid>; rel=next".into(),
+        ] {
+            let first = server
+                .mock("GET", "/rooms")
+                .with_header("Link", &link)
+                .with_body(r#"{"items":[]}"#)
+                .create_async()
+                .await;
+            assert!(
+                matches!(
+                    webex.list_page::<Room>().await,
+                    Err(PaginationError::InvalidContinuation(_))
+                ),
+                "{link}"
+            );
+            first.assert_async().await;
+        }
+        forbidden.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn redirects_are_validated_before_forwarding_credentials() {
+        let mut server = mockito::Server::new_async().await;
+        let mut unsafe_server = mockito::Server::new_async().await;
+        let forbidden = unsafe_server
+            .mock("GET", Matcher::Any)
+            .expect(0)
+            .create_async()
+            .await;
+        let first = server
+            .mock("GET", "/rooms")
+            .match_header("authorization", "Bearer test_token")
+            .with_status(302)
+            .with_header("Location", "/rooms-redirected")
+            .create_async()
+            .await;
+        let safe = server
+            .mock("GET", "/rooms-redirected")
+            .match_header("authorization", "Bearer test_token")
+            .with_header("Link", "<?cursor=next>; rel=next")
+            .with_body(r#"{"items":[]}"#)
+            .create_async()
+            .await;
+        let unsafe_redirect = server
+            .mock("GET", "/rooms-redirected?cursor=next")
+            .match_header("authorization", "Bearer test_token")
+            .with_status(307)
+            .with_header("Location", &format!("{}/stolen", unsafe_server.url()))
+            .create_async()
+            .await;
+        let webex = paginated_webex(&server, &["rooms"]);
+        let page = webex.list_page::<Room>().await.unwrap();
+        assert!(matches!(
+            webex.list_next_page(&page.continuation.unwrap()).await,
+            Err(PaginationError::InvalidContinuation(_))
+        ));
+        first.assert_async().await;
+        safe.assert_async().await;
+        unsafe_redirect.assert_async().await;
+        forbidden.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn legacy_room_inventory_preserves_http_errors() {
+        for status in [403, 423, 429] {
+            let mut server = mockito::Server::new_async().await;
+            let mock = server
+                .mock("GET", Matcher::Any)
+                .with_status(status)
+                .with_header("Retry-After", "12")
+                .with_body(r#"{"message":"Try later"}"#)
+                .expect_at_least(1)
+                .create_async()
+                .await;
+            let webex = paginated_webex(&server, &["rooms", "teams"]);
+            let error: Error = webex.get_all_rooms().await.unwrap_err();
+            match error {
+                Error::StatusText(code, message) if status == 403 => {
+                    assert_eq!(code, StatusCode::FORBIDDEN);
+                    assert_eq!(message, "Try later");
+                }
+                Error::Limited(code, Some(12)) => assert_eq!(usize::from(code.as_u16()), status),
+                other => panic!("unexpected legacy error: {other:?}"),
+            }
+            mock.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_room_inventory_reports_local_failures_as_other() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", Matcher::Any)
+            .with_header("Link", "malformed")
+            .with_body(r#"{"items":[]}"#)
+            .expect_at_least(1)
+            .create_async()
+            .await;
+        let webex = paginated_webex(&server, &["rooms", "teams"]);
+        assert!(matches!(webex.get_all_rooms().await,
+            Err(Error::Other(message)) if message.contains("Invalid pagination continuation")));
+        assert!(matches!(
+            webex
+                .get_all_rooms_with_options(PaginationOptions::default())
+                .await,
+            Err(PaginationError::InvalidContinuation(_))
+        ));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn get_all_rooms_paginates_team_rooms() {
+        let mut server = mockito::Server::new_async().await;
+        let team_next_url = format!("{}/rooms?teamId=T1&cursor=p2", server.url());
+
+        // Initial rooms inventory also spans pages.
+        let teamless = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::Missing)
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_header("Link", "</rooms?cursor=initial-next>; rel=next")
+            .with_body(json!({ "items": [room_json("r0", "Teamless Room")] }).to_string())
+            .create_async()
+            .await;
+
+        let initial_next = server
+            .mock("GET", "/rooms?cursor=initial-next")
+            .with_body(json!({"items": [room_json("r-extra", "Extra")]}).to_string())
+            .create_async()
+            .await;
+        let teams_first = server
+            .mock("GET", "/teams")
+            .match_query(Matcher::Missing)
+            .with_header("Link", "</teams?cursor=teams-next>; rel=next")
+            .with_body(r#"{"items":[]}"#)
+            .create_async()
+            .await;
+        // Teams list, second page
+        let teams_mock = server
+            .mock("GET", "/teams?cursor=teams-next")
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "items": [
+                        { "id": "T1", "name": "Team 1", "created": "2024-01-01T00:00:00.000Z" }
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        // Team T1 rooms — page 1 with rel="next"
+        let team_page1 = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::UrlEncoded("teamId".into(), "T1".into()))
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_header("Link", &format!("<{team_next_url}>; rel=\"next\""))
+            .with_body(json!({ "items": [room_json("tr1", "Team Room 1")] }).to_string())
+            .create_async()
+            .await;
+
+        // Team T1 rooms — page 2 (followed via absolute URL), no further Link
+        let team_page2 = server
+            .mock("GET", "/rooms")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("teamId".into(), "T1".into()),
+                mockito::Matcher::UrlEncoded("cursor".into(), "p2".into()),
+            ]))
+            .match_header("authorization", "Bearer test_token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "items": [room_json("tr2", "Team Room 2")] }).to_string())
+            .create_async()
+            .await;
+
+        let webex = paginated_webex(&server, &["rooms", "teams"]);
+        let rooms = webex
+            .get_all_rooms()
+            .await
+            .expect("get_all_rooms should succeed");
+
+        let ids: Vec<String> = rooms.iter().map(|r| r.id.clone()).collect();
+        assert!(
+            ids.contains(&"r0".to_string()),
+            "teamless room missing: {ids:?}"
+        );
+        assert!(
+            ids.contains(&"tr1".to_string()),
+            "team page 1 room missing: {ids:?}"
+        );
+        assert!(
+            ids.contains(&"tr2".to_string()),
+            "team page 2 room missing: {ids:?}"
+        );
+        assert!(ids.contains(&"r-extra".to_string()));
+        assert_eq!(rooms.len(), 4, "unexpected rooms: {ids:?}");
+
+        teamless.assert_async().await;
+        initial_next.assert_async().await;
+        teams_first.assert_async().await;
+        teams_mock.assert_async().await;
+        team_page1.assert_async().await;
+        team_page2.assert_async().await;
     }
 }

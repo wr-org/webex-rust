@@ -60,7 +60,7 @@ pub struct RoomListParams<'a> {
     pub to: Option<&'a str>,
     /// Sort results. Cannot be set in combination with orgPublicSpaces.
     pub sort_by: Option<SortRoomsBy>,
-    /// Limit the maximum number of rooms in the response.
+    /// Maximum number of rooms per response page, not a total-results limit.
     /// Default: 100
     pub max: Option<u32>,
 }

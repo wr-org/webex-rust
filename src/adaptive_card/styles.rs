@@ -1,11 +1,13 @@
 //! Style types for Adaptive Cards including colors, spacing, weights, and alignment options.
 
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumString;
 
 /// Color for text
 #[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, EnumString)]
 #[serde(rename_all = "PascalCase")]
+#[strum(ascii_case_insensitive)]
 pub enum Color {
     Default,
     Dark,
@@ -18,7 +20,8 @@ pub enum Color {
 
 /// Style hint for Container.
 #[allow(missing_docs)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, EnumString)]
+#[strum(ascii_case_insensitive)]
 pub enum ContainerStyle {
     Default,
     Emphasis,
@@ -30,8 +33,9 @@ pub enum ContainerStyle {
 
 /// Controls the amount of spacing between this element and the preceding element.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, EnumString)]
 #[serde(rename_all = "PascalCase")]
+#[strum(ascii_case_insensitive)]
 pub enum Spacing {
     #[serde(alias = "default")]
     Default,
@@ -162,6 +166,20 @@ mod tests {
     use super::*;
     use serde::de::DeserializeOwned;
     use std::fmt::Debug;
+
+    #[test]
+    fn styles_parse_case_insensitively() {
+        assert_eq!("aCcEnT".parse::<Color>().unwrap(), Color::Accent);
+        assert_eq!(
+            "EMPHASIS".parse::<ContainerStyle>().unwrap(),
+            ContainerStyle::Emphasis
+        );
+        assert_eq!(
+            "extraLarge".parse::<Spacing>().unwrap(),
+            Spacing::ExtraLarge
+        );
+        assert!("unknown".parse::<Color>().is_err());
+    }
 
     fn check_wire_value<T: Serialize + DeserializeOwned + Eq + Debug>(
         value: &T,
