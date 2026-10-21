@@ -91,7 +91,7 @@ pub struct MessageListParams<'a> {
     pub before: Option<&'a str>,
     /// List messages sent before a message, by ID.
     pub before_message: Option<&'a str>,
-    /// Limit the maximum number of messages in the response.
+    /// Maximum number of messages per response page, not a total-results limit.
     /// Default: 50
     pub max: Option<u32>,
 }

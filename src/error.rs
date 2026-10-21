@@ -90,6 +90,21 @@ pub enum Error {
     #[error("{0}")]
     UserError(String),
 
+    /// A malformed, ambiguous, or unsafe pagination link or redirect.
+    #[error("Invalid pagination continuation: {0}")]
+    InvalidPagination(String),
+
+    /// Complete enumeration needs another page after exhausting its budget.
+    #[error("Pagination page budget exhausted ({max_pages} pages)")]
+    PaginationLimit {
+        /// Configured maximum page count, including the first page.
+        max_pages: usize,
+    },
+
+    /// Complete enumeration encountered a previously requested continuation.
+    #[error("Pagination continuation loop detected")]
+    PaginationLoop,
+
     // catch-all
     /// Unknown or uncategorized error.
     ///

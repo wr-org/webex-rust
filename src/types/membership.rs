@@ -44,7 +44,7 @@ pub struct MembershipListParams<'a> {
     pub person_id: Option<&'a str>,
     /// List memberships for a person, by email address.
     pub person_email: Option<&'a str>,
-    /// Limit the maximum number of memberships in the response.
+    /// Maximum number of memberships per response page, not a total-results limit.
     /// Default: 100
     pub max: Option<u32>,
 }

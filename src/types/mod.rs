@@ -9,6 +9,7 @@ pub mod event;
 pub mod membership;
 pub mod message;
 pub mod organization;
+pub mod pagination;
 pub mod person;
 pub mod room;
 
@@ -23,6 +24,7 @@ pub use event::{
 pub use membership::{Membership, MembershipListParams};
 pub use message::{Message, MessageEditParams, MessageListParams, MessageOut};
 pub use organization::{Catalog, Destination, Organization, Team};
+pub use pagination::{Continuation, Page, PaginationOptions};
 pub use person::{Person, PhoneNumber};
 pub use room::{Room, RoomListParams, RoomType, SortRoomsBy};
 
