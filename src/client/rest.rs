@@ -1,6 +1,6 @@
 //! Low-level REST client for Webex API requests.
 
-use crate::error::Error;
+use crate::error::{Error, PaginationError};
 use crate::types::{Continuation, Gettable, ListResult, Page, PaginationOptions};
 use log::{error, trace};
 use reqwest::StatusCode;
@@ -403,11 +403,11 @@ impl RestClient {
         &self,
         params: Option<impl Serialize>,
         auth: AuthorizationType<'_>,
-    ) -> Result<Page<T>, Error> {
+    ) -> Result<Page<T>, PaginationError> {
         let origin = self.pagination_origin::<T>()?;
         let mut url = origin.clone();
         if let Some(params) = params {
-            let query = serde_html_form::to_string(params)?;
+            let query = serde_html_form::to_string(params).map_err(Error::from)?;
             if !query.is_empty() {
                 url.set_query(Some(&query));
             }
@@ -415,24 +415,24 @@ impl RestClient {
         self.fetch_page(url, origin, auth).await
     }
 
-    fn pagination_origin<T: Gettable>(&self) -> Result<url::Url, Error> {
+    fn pagination_origin<T: Gettable>(&self) -> Result<url::Url, PaginationError> {
         let prefix = self
             .host_prefix
             .get(T::API_ENDPOINT)
             .map_or(super::REST_HOST_PREFIX, String::as_str);
         url::Url::parse(&format!("{prefix}/{}", T::API_ENDPOINT))
-            .map_err(|_| Error::InvalidPagination("invalid API origin".into()))
+            .map_err(|_| PaginationError::InvalidContinuation("invalid API origin".into()))
     }
 
     pub(super) async fn api_next_page<T: Gettable + DeserializeOwned>(
         &self,
         continuation: &Continuation<T>,
         auth: AuthorizationType<'_>,
-    ) -> Result<Page<T>, Error> {
+    ) -> Result<Page<T>, PaginationError> {
         // Revalidate against this client's configuration before attaching auth.
         let origin = self.pagination_origin::<T>()?;
         if origin.origin() != continuation.origin.origin() {
-            return Err(Error::InvalidPagination(
+            return Err(PaginationError::InvalidContinuation(
                 "continuation belongs to another API origin".into(),
             ));
         }
@@ -445,7 +445,7 @@ impl RestClient {
         mut url: url::Url,
         origin: url::Url,
         auth: AuthorizationType<'_>,
-    ) -> Result<Page<T>, Error> {
+    ) -> Result<Page<T>, PaginationError> {
         // reqwest cannot override redirect policy per request. Use a pooled,
         // no-redirect transport for pages, then validate every Location ourselves.
         // Request construction and status decoding remain shared with other REST calls.
@@ -460,7 +460,7 @@ impl RestClient {
         loop {
             validate_destination(&origin, &url)?;
             if !redirects.insert(url.clone()) || redirects.len() > 10 {
-                return Err(Error::InvalidPagination(
+                return Err(PaginationError::InvalidContinuation(
                     "redirect loop or redirect limit exceeded".into(),
                 ));
             }
@@ -479,7 +479,9 @@ impl RestClient {
                     .get(reqwest::header::LOCATION)
                     .and_then(|value| value.to_str().ok())
                     .ok_or_else(|| {
-                        Error::InvalidPagination("redirect without a valid Location".into())
+                        PaginationError::InvalidContinuation(
+                            "redirect without a valid Location".into(),
+                        )
                     })?;
                 url = pagination::resolve_destination(&origin, &url, location)?;
                 continue;
@@ -504,9 +506,9 @@ impl RestClient {
         params: Option<impl Serialize>,
         auth: AuthorizationType<'_>,
         options: PaginationOptions,
-    ) -> Result<Vec<T>, Error> {
+    ) -> Result<Vec<T>, PaginationError> {
         if options.max_pages == 0 {
-            return Err(Error::PaginationLimit { max_pages: 0 });
+            return Err(PaginationError::Limit { max_pages: 0 });
         }
         let mut page = self.api_get_page::<T>(params, auth).await?;
         let mut items = page.items;
@@ -515,10 +517,10 @@ impl RestClient {
         while let Some(next) = page.continuation {
             // Check loops independently of the caller's request budget.
             if !visited.insert(next.url.clone()) {
-                return Err(Error::PaginationLoop);
+                return Err(PaginationError::Loop);
             }
             if pages >= options.max_pages {
-                return Err(Error::PaginationLimit {
+                return Err(PaginationError::Limit {
                     max_pages: options.max_pages,
                 });
             }
@@ -859,11 +861,11 @@ mod tests {
                 .await
                 .unwrap_err();
             match error {
-                Error::StatusText(code, message) if status == 403 => {
+                PaginationError::Request(Error::StatusText(code, message)) if status == 403 => {
                     assert_eq!(usize::from(code.as_u16()), status);
                     assert_eq!(message, "Try later");
                 }
-                Error::Limited(code, delay) => {
+                PaginationError::Request(Error::Limited(code, delay)) => {
                     assert_eq!(usize::from(code.as_u16()), status);
                     assert_eq!(delay, Some(12));
                 }

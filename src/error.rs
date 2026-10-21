@@ -90,27 +90,50 @@ pub enum Error {
     #[error("{0}")]
     UserError(String),
 
-    /// A malformed, ambiguous, or unsafe pagination link or redirect.
-    #[error("Invalid pagination continuation: {0}")]
-    InvalidPagination(String),
-
-    /// Complete enumeration needs another page after exhausting its budget.
-    #[error("Pagination page budget exhausted ({max_pages} pages)")]
-    PaginationLimit {
-        /// Configured maximum page count, including the first page.
-        max_pages: usize,
-    },
-
-    /// Complete enumeration encountered a previously requested continuation.
-    #[error("Pagination continuation loop detected")]
-    PaginationLoop,
-
     // catch-all
     /// Unknown or uncategorized error.
     ///
     /// Fallback error type for errors that don't fit other categories.
     #[error("Unknown error: {0}")]
     Other(String),
+}
+
+/// Errors from the explicit page and complete-enumeration APIs.
+///
+/// Request failures retain the original [`Error`] as their source, including
+/// [`Error::Limited`] for HTTP 423/429. Pagination-only failures are separate so
+/// the existing exhaustive [`Error`] enum stays source-compatible.
+#[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
+pub enum PaginationError {
+    /// Request, response decoding, or query serialization failed.
+    #[error("{0}")]
+    Request(#[from] Error),
+
+    /// A malformed, ambiguous, or unsafe pagination link or redirect.
+    #[error("Invalid pagination continuation: {0}")]
+    InvalidContinuation(String),
+
+    /// Complete enumeration needs another page after exhausting its budget.
+    #[error("Pagination page budget exhausted ({max_pages} pages)")]
+    Limit {
+        /// Configured maximum page count, including the first page.
+        max_pages: usize,
+    },
+
+    /// Complete enumeration encountered a previously requested continuation.
+    #[error("Pagination continuation loop detected")]
+    Loop,
+}
+
+impl PaginationError {
+    /// Preserve the legacy room inventory return type without losing request errors.
+    pub(crate) fn into_legacy_error(self) -> Error {
+        match self {
+            Self::Request(error) => error,
+            other => Error::Other(other.to_string()),
+        }
+    }
 }
 
 impl From<String> for Error {
@@ -127,6 +150,39 @@ impl From<&str> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pagination_request_keeps_original_error_as_source() {
+        use std::error::Error as _;
+        let error = PaginationError::from(Error::Limited(StatusCode::TOO_MANY_REQUESTS, Some(12)));
+        assert!(matches!(
+            error.source().unwrap().downcast_ref::<Error>(),
+            Some(Error::Limited(StatusCode::TOO_MANY_REQUESTS, Some(12)))
+        ));
+        assert_eq!(
+            error.to_string(),
+            Error::Limited(StatusCode::TOO_MANY_REQUESTS, Some(12)).to_string()
+        );
+    }
+
+    #[test]
+    fn legacy_inventory_mapping_preserves_requests_and_describes_local_failures() {
+        let request = PaginationError::from(Error::Limited(StatusCode::LOCKED, Some(12)));
+        assert!(matches!(
+            request.into_legacy_error(),
+            Error::Limited(StatusCode::LOCKED, Some(12))
+        ));
+        for error in [
+            PaginationError::Limit { max_pages: 1 },
+            PaginationError::Loop,
+            PaginationError::InvalidContinuation("unsafe destination".into()),
+        ] {
+            let expected = error.to_string();
+            assert!(
+                matches!(error.into_legacy_error(), Error::Other(message) if message == expected)
+            );
+        }
+    }
 
     #[test]
     fn test_error_from_string() {

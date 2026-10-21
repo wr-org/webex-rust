@@ -1,16 +1,16 @@
 //! Link syntax and credential destination policy for list pages.
 
-use crate::error::Error;
+use crate::error::PaginationError;
 use reqwest::header::{HeaderMap, LINK};
 use url::Url;
 
-fn invalid(message: &str) -> Error {
-    Error::InvalidPagination(message.into())
+fn invalid(message: &str) -> PaginationError {
+    PaginationError::InvalidContinuation(message.into())
 }
 
 /// Trust the configured origin, or the two public Webex REST aliases when
 /// starting from either alias. Never trust a suffix match or arbitrary subdomain.
-pub(super) fn validate_destination(origin: &Url, target: &Url) -> Result<(), Error> {
+pub(super) fn validate_destination(origin: &Url, target: &Url) -> Result<(), PaginationError> {
     let webex_alias = |url: &Url| {
         url.scheme() == "https"
             && url.port_or_known_default() == Some(443)
@@ -27,7 +27,11 @@ pub(super) fn validate_destination(origin: &Url, target: &Url) -> Result<(), Err
     Ok(())
 }
 
-pub(super) fn resolve_destination(origin: &Url, base: &Url, reference: &str) -> Result<Url, Error> {
+pub(super) fn resolve_destination(
+    origin: &Url,
+    base: &Url,
+    reference: &str,
+) -> Result<Url, PaginationError> {
     // URL parsers normalize whitespace/backslashes; reject ambiguous input before
     // normalizing so malformed continuations cannot silently change destination.
     if reference
@@ -47,7 +51,7 @@ pub(super) fn next_link(
     headers: &HeaderMap,
     origin: &Url,
     base: &Url,
-) -> Result<Option<Url>, Error> {
+) -> Result<Option<Url>, PaginationError> {
     let mut next = None;
     for value in headers.get_all(LINK) {
         let value = value
@@ -72,7 +76,7 @@ fn token(c: char) -> bool {
 /// commas/semicolons inside quotes and angle brackets are not separators.
 /// `parse_link_header` 0.4.1 was evaluated but strips whitespace and quotes before
 /// splitting, losing relation lists and quoted delimiters (and rejecting bare queries).
-fn parse_next_links(mut input: &str) -> Result<Vec<String>, Error> {
+fn parse_next_links(mut input: &str) -> Result<Vec<String>, PaginationError> {
     let mut next = Vec::new();
     while !input.trim().is_empty() {
         input = input.trim_start_matches([' ', '\t', ',']);
@@ -133,7 +137,7 @@ fn parse_next_links(mut input: &str) -> Result<Vec<String>, Error> {
     Ok(next)
 }
 
-fn parameter_value(input: &str) -> Result<(String, &str), Error> {
+fn parameter_value(input: &str) -> Result<(String, &str), PaginationError> {
     if let Some(quoted) = input.strip_prefix('"') {
         let mut value = String::new();
         let mut escaped = false;
@@ -196,7 +200,10 @@ mod tests {
             "</a>; rel=next; anchor=\"/b\"",
         ] {
             assert!(
-                matches!(parse_next_links(header), Err(Error::InvalidPagination(_))),
+                matches!(
+                    parse_next_links(header),
+                    Err(PaginationError::InvalidContinuation(_))
+                ),
                 "{header}"
             );
         }

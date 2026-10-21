@@ -1,7 +1,7 @@
 //! Main Webex client implementation for interacting with the Webex Teams API.
 
 use crate::adaptive_card::AdaptiveCard;
-use crate::error::Error;
+use crate::error::{Error, PaginationError};
 use crate::types::{
     Attachment, AttachmentAction, CatalogReply, Continuation, DeviceData, DevicesReply, Gettable,
     GlobalId, GlobalIdType, ListResult, Membership, MembershipListParams, Message,
@@ -310,18 +310,23 @@ impl Webex {
     /// Enumerates all pages of rooms, teams, and each team's rooms using the
     /// default [`PaginationOptions`]. Existing ordering and duplicates are
     /// preserved. This may perform many requests; team requests run concurrently.
+    /// Request errors are returned unchanged. Pagination-only failures are returned
+    /// as [`Error::Other`] to preserve this method's existing error type. Use
+    /// [`Self::get_all_rooms_with_options`] for typed [`PaginationError`] failures.
     pub async fn get_all_rooms(&self) -> Result<Vec<Room>, Error> {
         self.get_all_rooms_with_options(PaginationOptions::default())
             .await
+            .map_err(PaginationError::into_legacy_error)
     }
 
     /// Like [`Self::get_all_rooms`], with a page budget per enumeration
     /// (the initial rooms list, teams list, and each team's rooms list).
-    /// This is not a global request budget across all teams.
+    /// This is not a global request budget across all teams. Errors retain their
+    /// pagination category; request failures wrap the original [`Error`].
     pub async fn get_all_rooms_with_options(
         &self,
         options: PaginationOptions,
-    ) -> Result<Vec<Room>, Error> {
+    ) -> Result<Vec<Room>, PaginationError> {
         let (mut all_rooms, teams) =
             try_join!(self.list_all(options), self.list_all::<Team>(options))?;
         let futures: Vec<_> = teams
@@ -477,10 +482,12 @@ impl Webex {
     /// Fetch the first page without automatically requesting subsequent pages.
     ///
     /// An empty page can have a continuation. Only absence of a continuation
-    /// signals completion. Malformed or unsafe links return [`Error::InvalidPagination`].
+    /// signals completion. Request errors wrap the original [`Error`] in
+    /// [`PaginationError::Request`]. Malformed or unsafe links return
+    /// [`PaginationError::InvalidContinuation`].
     ///
     /// ```no_run
-    /// # async fn example(webex: &webex::Webex) -> Result<(), webex::error::Error> {
+    /// # async fn example(webex: &webex::Webex) -> Result<(), webex::error::PaginationError> {
     /// let mut page = webex.list_page::<webex::Room>().await?;
     /// loop {
     ///     for room in page.items { println!("{:?}", room.title); }
@@ -491,7 +498,9 @@ impl Webex {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn list_page<T: Gettable + DeserializeOwned>(&self) -> Result<Page<T>, Error> {
+    pub async fn list_page<T: Gettable + DeserializeOwned>(
+        &self,
+    ) -> Result<Page<T>, PaginationError> {
         self.client
             .api_get_page(None::<()>, AuthorizationType::Bearer(&self.token))
             .await
@@ -503,7 +512,7 @@ impl Webex {
     pub async fn list_page_with_params<T: Gettable + DeserializeOwned>(
         &self,
         list_params: T::ListParams<'_>,
-    ) -> Result<Page<T>, Error> {
+    ) -> Result<Page<T>, PaginationError> {
         self.client
             .api_get_page(Some(list_params), AuthorizationType::Bearer(&self.token))
             .await
@@ -520,7 +529,7 @@ impl Webex {
     pub async fn list_next_page<T: Gettable + DeserializeOwned>(
         &self,
         continuation: &Continuation<T>,
-    ) -> Result<Page<T>, Error> {
+    ) -> Result<Page<T>, PaginationError> {
         self.client
             .api_next_page(continuation, AuthorizationType::Bearer(&self.token))
             .await
@@ -529,12 +538,12 @@ impl Webex {
     /// Explicitly collect all pages in server order, including empty intermediate
     /// pages, within a caller-selected budget.
     ///
-    /// Returns [`Error::PaginationLimit`] on budget exhaustion and
-    /// [`Error::PaginationLoop`] on repeated continuations. Errors discard the
+    /// Returns [`PaginationError::Limit`] on budget exhaustion and
+    /// [`PaginationError::Loop`] on repeated continuations. Errors discard the
     /// collected result; use manual pages to retain progress. No retries occur.
     ///
     /// ```no_run
-    /// # async fn example(webex: &webex::Webex) -> Result<(), webex::error::Error> {
+    /// # async fn example(webex: &webex::Webex) -> Result<(), webex::error::PaginationError> {
     /// let rooms = webex.list_all::<webex::Room>(webex::PaginationOptions {
     ///     max_pages: 2_000,
     /// }).await?;
@@ -544,7 +553,7 @@ impl Webex {
     pub async fn list_all<T: Gettable + DeserializeOwned>(
         &self,
         options: PaginationOptions,
-    ) -> Result<Vec<T>, Error> {
+    ) -> Result<Vec<T>, PaginationError> {
         self.client
             .api_list_all(None::<()>, AuthorizationType::Bearer(&self.token), options)
             .await
@@ -557,7 +566,7 @@ impl Webex {
         &self,
         list_params: T::ListParams<'_>,
         options: PaginationOptions,
-    ) -> Result<Vec<T>, Error> {
+    ) -> Result<Vec<T>, PaginationError> {
         self.client
             .api_list_all(
                 Some(list_params),
@@ -1436,19 +1445,19 @@ mod tests {
             webex
                 .list_all::<Room>(PaginationOptions { max_pages: 0 })
                 .await,
-            Err(Error::PaginationLimit { max_pages: 0 })
+            Err(PaginationError::Limit { max_pages: 0 })
         ));
         assert!(matches!(
             webex
                 .list_all::<Room>(PaginationOptions { max_pages: 1 })
                 .await,
-            Err(Error::PaginationLimit { max_pages: 1 })
+            Err(PaginationError::Limit { max_pages: 1 })
         ));
         assert!(matches!(
             webex
                 .list_all::<Room>(PaginationOptions { max_pages: 10 })
                 .await,
-            Err(Error::PaginationLoop)
+            Err(PaginationError::Loop)
         ));
         first.assert_async().await;
         looping.assert_async().await;
@@ -1479,7 +1488,7 @@ mod tests {
             assert!(
                 matches!(
                     webex.list_page::<Room>().await,
-                    Err(Error::InvalidPagination(_))
+                    Err(PaginationError::InvalidContinuation(_))
                 ),
                 "{link}"
             );
@@ -1522,12 +1531,60 @@ mod tests {
         let page = webex.list_page::<Room>().await.unwrap();
         assert!(matches!(
             webex.list_next_page(&page.continuation.unwrap()).await,
-            Err(Error::InvalidPagination(_))
+            Err(PaginationError::InvalidContinuation(_))
         ));
         first.assert_async().await;
         safe.assert_async().await;
         unsafe_redirect.assert_async().await;
         forbidden.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn legacy_room_inventory_preserves_http_errors() {
+        for status in [403, 423, 429] {
+            let mut server = mockito::Server::new_async().await;
+            let mock = server
+                .mock("GET", Matcher::Any)
+                .with_status(status)
+                .with_header("Retry-After", "12")
+                .with_body(r#"{"message":"Try later"}"#)
+                .expect_at_least(1)
+                .create_async()
+                .await;
+            let webex = paginated_webex(&server, &["rooms", "teams"]);
+            let error: Error = webex.get_all_rooms().await.unwrap_err();
+            match error {
+                Error::StatusText(code, message) if status == 403 => {
+                    assert_eq!(code, StatusCode::FORBIDDEN);
+                    assert_eq!(message, "Try later");
+                }
+                Error::Limited(code, Some(12)) => assert_eq!(usize::from(code.as_u16()), status),
+                other => panic!("unexpected legacy error: {other:?}"),
+            }
+            mock.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_room_inventory_reports_local_failures_as_other() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", Matcher::Any)
+            .with_header("Link", "malformed")
+            .with_body(r#"{"items":[]}"#)
+            .expect_at_least(1)
+            .create_async()
+            .await;
+        let webex = paginated_webex(&server, &["rooms", "teams"]);
+        assert!(matches!(webex.get_all_rooms().await,
+            Err(Error::Other(message)) if message.contains("Invalid pagination continuation")));
+        assert!(matches!(
+            webex
+                .get_all_rooms_with_options(PaginationOptions::default())
+                .await,
+            Err(PaginationError::InvalidContinuation(_))
+        ));
+        mock.assert_async().await;
     }
 
     #[tokio::test]
